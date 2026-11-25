@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LocalPeer } from './localnet.js';
 import * as OFFICE from './office.js';
+import { buildCompound } from './compound.js';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -18,14 +19,16 @@ const CFG = {
   NEAR_MID: 3,
   NEAR_CLOSE: 1,
   NEAR_HYST: 0.3, // 邊界滯後，避免在門檻來回閃爍
-  SMASH_RANGE: 2, // 破壞技能半徑（公尺）
-  SMASH_ANGLE: 90 * Math.PI / 180, // 扇形總角度（正前方 ±一半，預設 90°＝左右各 45°）
+  SMASH_RANGE: 3, // 破壞技能半徑（公尺）
+  SMASH_ANGLE: 60 * Math.PI / 180, // 水平半角 ±60°
+  SMASH_VANGLE: 60 * Math.PI / 180, // 垂直半角 ±60°（從瞄準方向量到物件中心／最近点）
   SMASH_CD: 10000,
   SMASH_LOCK: 5000, // 被打回原形後不能變身的時間
   END_MS: 7000, MAX_PLAYERS: 8, HP: 100, MISS: 10, WALL_MISS: 2, MAX_TF: Infinity,
   TAUNT_CD: 9000, TAUNT_MS: 3500, // 躲藏者噴漆：冷卻 9 秒、糊住鬼畫面 3.5 秒
   SHOT_SPEED: 14, SHOT_CD: 600, SHOT_RANGE: 35, ROT_SPEED: 2.6,
   JUMP_V: 7.4, GRAVITY: 20, STEP_UP: .42, // 跳躍約 1.35 米，可踩上矮櫃／床／桌
+  BODY_H: .8, // 角色碰撞身高（可從夠高的桌下穿過）
   PITCH_MIN: -80 * Math.PI / 180, PITCH_MAX: 70 * Math.PI / 180, // 可抬頭看天花板／櫃子頂
   SPRINT: 1.6, STAMINA: 3, STAMINA_REGEN: 4, STAMINA_DELAY: .5, STAMINA_RESTART: .3, // 衝刺 3 秒，停 0.5 秒後 4 秒回滿；耗盡要回到 30% 才能再衝
   TF_RANGE: 4.0, PREFIX: 'cozyhouse-prophunt-v1-',
@@ -576,6 +579,37 @@ function addGlow(g, name, isDisguise = false) { // 燈具發光：光暈＋自�
   }
   g.traverse(o => { if (o.isMesh && /lamp|light|bulb|shade/i.test(o.material?.name || '')) { o.material = o.material.clone(); o.material.emissive = new THREE.Color('#ffd08a'); o.material.emissiveIntensity = .85; } });
 }
+const _c8 = new THREE.Vector3();
+function worldColsFrom(g, locals) {
+  g.updateMatrixWorld(true);
+  const m = g.matrixWorld;
+  return locals.map(b => {
+    let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity, z1 = Infinity, z2 = -Infinity;
+    for (const x of [b.x1, b.x2]) for (const y of [b.y1, b.y2]) for (const z of [b.z1, b.z2]) {
+      _c8.set(x, y, z).applyMatrix4(m);
+      if (_c8.x < x1) x1 = _c8.x; if (_c8.x > x2) x2 = _c8.x;
+      if (_c8.y < y1) y1 = _c8.y; if (_c8.y > y2) y2 = _c8.y;
+      if (_c8.z < z1) z1 = _c8.z; if (_c8.z > z2) z2 = _c8.z;
+    }
+    return { x1, x2, y1, y2, z1, z2 };
+  });
+}
+function syncPropCols(g) {
+  const locals = g.userData.localCols; if (!locals || !locals.length) return;
+  const world = worldColsFrom(g, locals);
+  const cols = g.userData.cols;
+  if (cols && cols.length === world.length) {
+    for (let i = 0; i < cols.length; i++) { const w = world[i]; cols[i].x1 = w.x1; cols[i].x2 = w.x2; cols[i].y1 = w.y1; cols[i].y2 = w.y2; cols[i].z1 = w.z1; cols[i].z2 = w.z2; }
+  }
+}
+function bakeCompounds() {
+  for (const n of Object.keys(modelCache)) {
+    const m = modelCache[n]; if (m.cols) continue;
+    const g = makeModel(n); g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.updateMatrixWorld(true);
+    try { m.cols = buildCompound(n, g, m.size, THREE); }
+    catch (e) { m.cols = null; }
+  }
+}
 function placeProps() {
   PROPS.forEach(([n, x, z, r, y = 0], i) => {
     useMap(propMap(i)); const g = makeModel(n); g.userData.map = propMap(i); g.position.set(x, y, z); g.rotation.y = r * Math.PI / 180; addGlow(g, n);
@@ -583,11 +617,25 @@ function placeProps() {
     g.traverse(o => o.isMesh && pickProps.push(o));
     const sz = modelCache[n].size;
     g.userData.height = sz.y; g.userData.radius = Math.max(sz.x, sz.z) / 2; g.userData.small = SMALL.has(n); g.userData.baseY = y;
-    if (y === 0) { g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(g);
-      const pad = sz.y > .45 ? .08 : .02;
-      const col = { x1: bb.min.x + pad, x2: bb.max.x - pad, z1: bb.min.z + pad, z2: bb.max.z - pad, y1: 0, y2: sz.y, prop: i, small: SMALL.has(n) };
-      colliders.push(col); g.userData.col = col;
-      const shelves = (SHELF_YS[n] || []).map(sy => ({ x1: col.x1, x2: col.x2, z1: col.z1, z2: col.z2, y: sy, needSmall: true }));
+    if (y === 0) {
+      const locals = (modelCache[n].cols && modelCache[n].cols.length) ? modelCache[n].cols.map(b => ({ ...b })) : null;
+      g.userData.localCols = locals;
+      if (locals) {
+        const cols = worldColsFrom(g, locals).map(w => ({ ...w, prop: i, small: SMALL.has(n) }));
+        for (const c of cols) colliders.push(c);
+        g.userData.cols = cols; g.userData.col = cols[0];
+      } else {
+        g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(g);
+        const pad = sz.y > .45 ? .08 : .02;
+        const col = { x1: bb.min.x + pad, x2: bb.max.x - pad, z1: bb.min.z + pad, z2: bb.max.z - pad, y1: 0, y2: sz.y, prop: i, small: SMALL.has(n) };
+        colliders.push(col); g.userData.col = col; g.userData.cols = [col];
+      }
+      const col0 = g.userData.col;
+      let shelves = (SHELF_YS[n] || []).map(sy => ({ x1: col0.x1, x2: col0.x2, z1: col0.z1, z2: col0.z2, y: sy, needSmall: true }));
+      if (!shelves.length && g.userData.cols) {
+        shelves = g.userData.cols.filter(c => (c.y2 - (c.y1 || 0)) < .18 && (c.x2 - c.x1) * (c.z2 - c.z1) > .04)
+          .map(c => ({ x1: c.x1, x2: c.x2, z1: c.z1, z2: c.z2, y: c.y2, needSmall: true }));
+      }
       g.userData.shelves = shelves;
     }
   });
@@ -963,6 +1011,10 @@ function hostAddPlayer(id, prof = {}) {
   H.players[id] = { id, name: String(prof.name || '玩家').slice(0, 10), color, avatar, ready: false, roll: 0, needReroll: 0, role: 'hider', alive: true, x: (MAPS[H.map] || MAPS.home).lobbyAt[0], z: (MAPS[H.map] || MAPS.home).lobbyAt[1], ry: 0, prop: -1, tf: 0, sx: 0, sz: 0 };
   H.players[id].sx = H.players[id].x; H.players[id].sz = H.players[id].z;
   H.order.push(id);
+  if (H.order.length > 1) {
+    const p = H.players[id];
+    hostSysChat(`👋 ${((p.avatar || '') + ' ' + (p.name || '玩家')).trim()} 加入了房間`);
+  }
   hostReresolveIfNeedChanged();
 }
 function lobbyResetDice() {
@@ -1056,7 +1108,7 @@ function hostDoRoll(id) {
   hostResolveDice();
 }
 function hostRemovePlayer(id) {
-  if (!H?.players[id]) return; const name = H.players[id].name;
+  if (!H?.players[id]) return; const leaver = H.players[id]; const name = leaver.name; const avatar = leaver.avatar || '';
   delete H.players[id]; H.order = H.order.filter(x => x !== id); net.conns.delete(id);
   if (H.hps) delete H.hps[id];
   if (H.dice) {
@@ -1064,6 +1116,7 @@ function hostRemovePlayer(id) {
     H.dice.tied = (H.dice.tied || []).filter(x => x !== id);
     if (H.dice.seeker === id) H.dice.seeker = H.dice.seekers[0] || null;
   }
+  hostSysChat(`👋 ${(avatar + ' ' + (name || '玩家')).trim()} 離開了房間`);
   broadcast({ t: 'ev', k: 'left', name });
   hostReresolveIfNeedChanged();
   hostCheckWin();
@@ -1188,7 +1241,14 @@ function hostSimShots() {
     if (best && (!hs || best.t <= hs.distance)) {
       end(); const q = best.q; q.alive = false;
       const pt = sh.pos.clone().addScaledVector(sh.d, best.t);
-      broadcast({ t: 'ev', k: 'caught', id: q.id, name: q.name, hp: H.hp, sid: sh.sid, p: pt.toArray() }); hostCheckWin(); continue;
+      const left = Object.values(H.players).filter(x => x.role === 'hider' && x.alive).length;
+      const shooter = sh.from && H.players[sh.from] ? H.players[sh.from] : null;
+      const nSeek = Object.values(H.players).filter(x => x.role === 'seeker').length;
+      const catchLine = (nSeek > 1 && shooter)
+        ? `🎯 鬼 ${shooter.name} 抓到了 ${q.name}！剩 ${left} 人`
+        : `🎯 鬼抓到了 ${q.name}！剩 ${left} 人`;
+      hostSysChat(catchLine);
+      broadcast({ t: 'ev', k: 'caught', id: q.id, name: q.name, seekerId: shooter?.id, seekerName: shooter?.name, left, hp: H.hp, sid: sh.sid, p: pt.toArray() }); hostCheckWin(); continue;
     }
     if (hs) {
       end(); const n = hs.face ? hs.face.normal.clone().transformDirection(hs.object.matrixWorld) : sh.d.clone().negate();
@@ -1235,18 +1295,13 @@ function hostOnMsg(from, m) {
     case 'map': if (from === net.myId && H.phase === 'lobby' && MAPS[m.id] && m.id !== H.map) {
       H.map = m.id; H.moved = {}; const [lx, lz] = MAPS[m.id].lobbyAt;
       for (const q of Object.values(H.players)) { q.x = lx; q.z = lz; q.sx = lx; q.sz = lz; }
-      let extra = '';
-      if (!H.timeEdited) {
-        H.hideMs = defaultHideMs(); H.seekMs = defaultSeekMs(H.map);
-        extra = `，時間重設為躲藏 ${H.hideMs / 1000} 秒、找人 ${H.seekMs / 60000} 分鐘`;
-      }
-      hostSysChat(`🗺️ 房主把地圖換成「${MAP_NAMES[m.id]}」${extra}`);
+      // 地圖／時間變更只顯示在大廳設定面板，不再發系統聊天
+      if (!H.timeEdited) { H.hideMs = defaultHideMs(); H.seekMs = defaultSeekMs(H.map); }
     } break;
     case 'times': if (from === net.myId && H.phase === 'lobby') {
       const hideS = clampHideS(m.hide), seekS = clampSeekS(m.seek);
       if (hideS * 1000 === H.hideMs && seekS * 1000 === H.seekMs) break;
       H.hideMs = hideS * 1000; H.seekMs = seekS * 1000; H.timeEdited = true;
-      hostSysChat(`⏱️ 房主把時間設成：躲藏 ${hideS} 秒、找人 ${seekS / 60} 分鐘`);
     } break;
     case 'chat': {
       const text = String(m.text || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80);
@@ -1326,17 +1381,16 @@ function hostOnMsg(from, m) {
       const nowS = Date.now();
       if (!H.lastSmash) H.lastSmash = {};
       if (nowS - (H.lastSmash[from] || 0) < CFG.SMASH_CD - 80) break;
-      if (Math.hypot((+m.x || 0) - p.x, (+m.z || 0) - p.z) > 2.8) break;
-      let fx = +m.fx || 0, fz = +m.fz || 0, fl = Math.hypot(fx, fz);
-      if (fl < .2) { fx = Math.sin(p.ry || 0); fz = Math.cos(p.ry || 0); fl = Math.hypot(fx, fz) || 1; }
-      fx /= fl; fz /= fl;
-      const sx = p.x, sz = p.z, cosMin = Math.cos(CFG.SMASH_ANGLE / 2), range = CFG.SMASH_RANGE;
-      const inCone = (x, z) => {
-        const dx = x - sx, dz = z - sz, d = Math.hypot(dx, dz);
-        if (d <= .08) return true;
-        if (d > range) return false;
-        return (dx * fx + dz * fz) / d >= cosMin;
-      };
+      if (Math.hypot((+m.x || 0) - p.x, (+m.z || 0) - p.z) > 3.2) break;
+      let fx = +m.fx || 0, fy = +m.fy, fz = +m.fz || 0;
+      let fl = Math.hypot(fx, Number.isFinite(fy) ? fy : 0, fz);
+      if (!Number.isFinite(fy) || fl < .2) {
+        fx = Math.sin(p.ry || 0); fy = 0; fz = Math.cos(p.ry || 0); fl = Math.hypot(fx, fz) || 1;
+      }
+      fx /= fl; fy = (Number.isFinite(fy) ? fy : 0) / fl; fz /= fl;
+      const sx = p.x, sz = p.z;
+      const sy = Number.isFinite(+m.y) ? +m.y : ((p.y || 0) + .62);
+      const inCone = (x, y, z) => inSmashCone(x, y, z, sx, sy, sz, fx, fy, fz);
       if (!H.smashed) H.smashed = {};
       const hits = [];
       for (let i = 0; i < PROPS.length; i++) {
@@ -1345,14 +1399,15 @@ function hostOnMsg(from, m) {
         const pr = PROPS[i]; if (!canSmashProp(pr[0])) continue;
         const mv = H.moved?.[i];
         const px = mv ? mv.x : pr[1], pz = mv ? mv.z : pr[2];
-        if (!inCone(px, pz)) continue;
+        if (!propInSmashCone(i, sx, sy, sz, fx, fy, fz, mv)) continue;
         H.smashed[i] = 1; hits.push({ i, x: +px.toFixed(3), z: +pz.toFixed(3), name: pr[0] });
       }
       const revealed = [];
       for (const q of Object.values(H.players)) {
         if (q.role !== 'hider' || !q.alive || (q.prop ?? -1) < 0) continue;
         const pr = PROPS[q.prop]; if (!pr || !canSmashProp(pr[0])) continue;
-        const inArea = inCone(q.x, q.z) || hits.some(h => h.i === q.prop);
+        const qy = (q.y || 0) + (modelCache[pr[0]]?.size?.y || .4) * .5;
+        const inArea = inCone(q.x, qy, q.z) || hits.some(h => h.i === q.prop);
         if (!inArea) continue;
         const pi = q.prop, px = q.x, pz = q.z;
         if (!H.smashed[pi]) { H.smashed[pi] = 1; hits.push({ i: pi, x: +px.toFixed(3), z: +pz.toFixed(3), name: pr[0] }); }
@@ -1361,7 +1416,7 @@ function hostOnMsg(from, m) {
       }
       H.lastSmash[from] = nowS;
       p.ry = Math.atan2(fx, fz);
-      broadcast({ t: 'ev', k: 'smash', ids: hits.map(h => h.i), hits, revealed, seekerId: from, name: p.name, x: +sx.toFixed(3), z: +sz.toFixed(3), fx: +fx.toFixed(4), fz: +fz.toFixed(4) });
+      broadcast({ t: 'ev', k: 'smash', ids: hits.map(h => h.i), hits, revealed, seekerId: from, name: p.name, x: +sx.toFixed(3), y: +sy.toFixed(3), z: +sz.toFixed(3), fx: +fx.toFixed(4), fy: +fy.toFixed(4), fz: +fz.toFixed(4) });
       break; }
   }
 }
@@ -1422,6 +1477,7 @@ function onHostMsg(m) {
     if (m.k === 'smash') {
       evLog.push(m);
       playSmashSound();
+      spawnSmashFan(m.x ?? local.x, m.y ?? ((local.y || 0) + .62), m.z ?? local.z, m.fx || 0, m.fy || 0, m.fz || 1);
       if (G.s) {
         G.s.smashed = [...new Set([...(G.s.smashed || []), ...(m.ids || [])])];
         for (const q of (m.revealed || [])) {
@@ -1520,11 +1576,17 @@ function resolveXZ(x, z, r, c) {
   const o = [[c.x1 - r - x, 0], [c.x2 + r - x, 0], [0, c.z1 - r - z], [0, c.z2 + r - z]].sort((a, b) => Math.hypot(...a) - Math.hypot(...b))[0];
   return [x + o[0], z + o[1]];
 }
+function colBlocksAtY(c, y, h = CFG.BODY_H) {
+  if (c.off) return false;
+  const y1 = c.y1 ?? 0, y2 = c.y2 ?? 2.6;
+  if (y >= y2 - .05) return false; // 已經站在頂面
+  if (y + h <= y1 + .02) return false; // 整個人在盒下方（從桌下穿過）
+  return true;
+}
 function collide(x, z, y = 0, r = .33, skipSmall = true) {
   for (const c of colliders) {
-    if (c.off) continue;
     if (skipSmall && c.small) continue;
-    if (y >= (c.y2 ?? 2.6) - .05) continue; // 已經在頂面或跳過它
+    if (!colBlocksAtY(c, y)) continue;
     [x, z] = resolveXZ(x, z, r, c);
   }
   return [Math.max(BOUNDS.x1, Math.min(BOUNDS.x2, x)), Math.max(BOUNDS.z1, Math.min(BOUNDS.z2, z))];
@@ -1542,12 +1604,24 @@ function applyPropPose(i, x, z, tip, y, ry, mnt) {
   g.rotation.x = tip ? Math.PI / 2 : 0;
   if (tip) { g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(g); g.position.y += -bb.min.y; }
   g.updateMatrixWorld(true);
-  const col = g.userData.col; if (col) {
-    const bb = new THREE.Box3().setFromObject(g); const pad = .06;
-    col.x1 = bb.min.x + pad; col.x2 = bb.max.x - pad; col.z1 = bb.min.z + pad; col.z2 = bb.max.z - pad;
-    col.y1 = bb.min.y; col.y2 = Math.max(.08, bb.max.y);
-    if (g.userData.shelves && SHELF_YS[pr[0]]) {
-      g.userData.shelves = SHELF_YS[pr[0]].map(sy => ({ x1: col.x1, x2: col.x2, z1: col.z1, z2: col.z2, y: baseY + sy, needSmall: true }));
+  if (g.userData.localCols) {
+    syncPropCols(g);
+    const cols = g.userData.cols || [];
+    if (g.userData.shelves && SHELF_YS[pr[0]] && cols[0]) {
+      const c = cols[0];
+      g.userData.shelves = SHELF_YS[pr[0]].map(sy => ({ x1: c.x1, x2: c.x2, z1: c.z1, z2: c.z2, y: baseY + sy, needSmall: true }));
+    } else if (cols.length) {
+      g.userData.shelves = cols.filter(c => (c.y2 - (c.y1 || 0)) < .18 && (c.x2 - c.x1) * (c.z2 - c.z1) > .04)
+        .map(c => ({ x1: c.x1, x2: c.x2, z1: c.z1, z2: c.z2, y: c.y2, needSmall: true }));
+    }
+  } else {
+    const col = g.userData.col; if (col) {
+      const bb = new THREE.Box3().setFromObject(g); const pad = .06;
+      col.x1 = bb.min.x + pad; col.x2 = bb.max.x - pad; col.z1 = bb.min.z + pad; col.z2 = bb.max.z - pad;
+      col.y1 = bb.min.y; col.y2 = Math.max(.08, bb.max.y);
+      if (g.userData.shelves && SHELF_YS[pr[0]]) {
+        g.userData.shelves = SHELF_YS[pr[0]].map(sy => ({ x1: col.x1, x2: col.x2, z1: col.z1, z2: col.z2, y: baseY + sy, needSmall: true }));
+      }
     }
   }
 }
@@ -1566,22 +1640,26 @@ function syncMoved(moved) {
   });
 }
 function pushSmall(x, z, y, r, dt, sprinting) {
-  //  bump 小物件：走路推開，衝刺會翻倒。大件在 collide() 裡擋住。
+  //  bump 小物件：走路推開，衝刺會翻倒。大件在 collide() 裡擋住。每件家具只推一次（可能有多個碰撞盒）。
+  const seen = new Set();
   for (const c of colliders) {
-    if (!c.small || c.off || c.prop == null) continue;
-    if (y >= (c.y2 ?? 1) - .05) continue;
-    if (!overCol(x, z, r + .04, c)) continue;
-    const i = c.prop, g = propObjs[i]; if (!g || !g.visible) continue;
-    const pcx = (c.x1 + c.x2) / 2, pcz = (c.z1 + c.z2) / 2;
+    if (!c.small || c.off || c.prop == null || seen.has(c.prop)) continue;
+    const g0 = propObjs[c.prop];
+    const list = (g0 && g0.userData.cols && g0.userData.cols.length) ? g0.userData.cols : [c];
+    const hit = list.find(cc => !cc.off && colBlocksAtY(cc, y) && overCol(x, z, r + .04, cc));
+    if (!hit) continue;
+    seen.add(c.prop);
+    const i = c.prop, g = g0; if (!g || !g.visible) continue;
+    const pcx = (hit.x1 + hit.x2) / 2, pcz = (hit.z1 + hit.z2) / 2;
     let nx = x - pcx, nz = z - pcz, nl = Math.hypot(nx, nz) || .001; nx /= nl; nz /= nl;
     const force = (sprinting ? 5.6 : 2.4) * dt;
     let px = g.position.x - nx * force, pz = g.position.z - nz * force;
-    const pr = Math.max(.18, (c.x2 - c.x1 + c.z2 - c.z1) / 4);
+    const pr = Math.max(.18, (hit.x2 - hit.x1 + hit.z2 - hit.z1) / 4);
     [px, pz] = collide(px, pz, 0, pr, true);
     const tip = sprinting || Math.abs(g.rotation.x) > .1 || !!pendingBumps.get(i)?.[3];
     applyPropPose(i, px, pz, tip);
     pendingBumps.set(i, [i, +px.toFixed(3), +pz.toFixed(3), tip ? 1 : 0]);
-    [x, z] = resolveXZ(x, z, r, c); // 人稍微被擋一下，但物件已經讓路
+    [x, z] = resolveXZ(x, z, r, hit); // 人稍微被擋一下，但物件已經讓路
   }
   return [x, z];
 }
@@ -1733,6 +1811,7 @@ function tryMountWall(nx, nz, y, r, propId) {
 
 function update(dt) {
   updateChirpPulses(dt);
+  updateSmashFans(dt);
   updateNearHint();
   updateDebugRadius();
   const s = G.s, p = me();
@@ -1869,7 +1948,55 @@ function doTransform() {
   send({ t: 'tf', id: target });
 }
 let lastSmashAt = 0;
-function smashFacing() { return { fx: -Math.sin(cam.yaw), fz: -Math.cos(cam.yaw) }; }
+function smashAim() {
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  return {
+    fx: -Math.sin(cam.yaw) * cp,
+    fy: -sp,
+    fz: -Math.cos(cam.yaw) * cp,
+    ox: local.x,
+    oy: (local.y || 0) + .62,
+    oz: local.z
+  };
+}
+function smashFacing() { const a = smashAim(); return { fx: a.fx, fy: a.fy, fz: a.fz }; }
+function inSmashCone(px, py, pz, ox, oy, oz, fx, fy, fz) {
+  const dx = px - ox, dy = py - oy, dz = pz - oz;
+  const d = Math.hypot(dx, dy, dz);
+  if (d <= .08) return true;
+  if (d > CFG.SMASH_RANGE + 1e-6) return false;
+  const h = Math.hypot(dx, dz);
+  const fh = Math.hypot(fx, fz) || 1e-6;
+  if (h > .04 && (dx * fx + dz * fz) / (h * fh) < Math.cos(CFG.SMASH_ANGLE) - 1e-9) return false;
+  const aimPitch = Math.atan2(fy, fh);
+  const propPitch = Math.atan2(dy, Math.max(h, 1e-6));
+  if (Math.abs(propPitch - aimPitch) > CFG.SMASH_VANGLE + 1e-9) return false;
+  return true;
+}
+function closestOnCol(ox, oy, oz, c) {
+  return {
+    x: Math.max(c.x1, Math.min(ox, c.x2)),
+    y: Math.max(c.y1 ?? 0, Math.min(oy, c.y2 ?? 0)),
+    z: Math.max(c.z1, Math.min(oz, c.z2))
+  };
+}
+function propInSmashCone(i, ox, oy, oz, fx, fy, fz, mv) {
+  const pr = PROPS[i], g = propObjs[i];
+  const cols = g?.userData.cols;
+  if (cols && cols.length) {
+    for (const c of cols) {
+      if (c.off) continue;
+      const p = closestOnCol(ox, oy, oz, c);
+      const cx = (c.x1 + c.x2) / 2, cy = ((c.y1 ?? 0) + (c.y2 ?? 0)) / 2, cz = (c.z1 + c.z2) / 2;
+      if (inSmashCone(p.x, p.y, p.z, ox, oy, oz, fx, fy, fz) || inSmashCone(cx, cy, cz, ox, oy, oz, fx, fy, fz)) return true;
+    }
+    return false;
+  }
+  const px = mv ? mv.x : pr[1], pz = mv ? mv.z : pr[2];
+  const py0 = mv && mv.y != null ? mv.y : (pr[4] || 0);
+  const hy = (modelCache[pr[0]]?.size?.y || .4) * .5;
+  return inSmashCone(px, py0 + hy, pz, ox, oy, oz, fx, fy, fz);
+}
 function smashCdLeft() {
   const self = me(), s = G.s, now = Date.now();
   let last = lastSmashAt || 0;
@@ -1884,10 +2011,10 @@ function doSmash() {
   if (!p || p.role !== 'seeker' || s?.phase !== 'seek') return;
   const left = smashCdLeft();
   if (left > 0) return toast(`破壞還在冷卻（${Math.ceil(left / 1000)} 秒）`);
-  const { fx, fz } = smashFacing();
-  local.ry = Math.atan2(fx, fz);
+  const a = smashAim();
+  local.ry = Math.atan2(a.fx, a.fz);
   lastSmashAt = Date.now();
-  send({ t: 'smash', fx, fz, x: local.x, z: local.z });
+  send({ t: 'smash', fx: a.fx, fy: a.fy, fz: a.fz, x: a.ox, y: a.oy, z: a.oz });
 }
 let smashBuf = null;
 function getSmashSound() {
@@ -1902,6 +2029,53 @@ function getSmashSound() {
 }
 function playSmashSound() {
   try { const a = new THREE.Audio(listener); a.setBuffer(getSmashSound()); a.setVolume(.7); a.play(); a.onEnded = () => { a.isPlaying = false; }; } catch { }
+}
+const smashFans = [];
+function spawnSmashFan(x, y, z, fx, fy, fz) {
+  const range = CFG.SMASH_RANGE, hAng = CFG.SMASH_ANGLE, vAng = CFG.SMASH_VANGLE;
+  const fl = Math.hypot(fx, fy || 0, fz) || 1; fx /= fl; fy = (fy || 0) / fl; fz /= fl;
+  const yaw = Math.atan2(fx, fz);
+  const geo = new THREE.BufferGeometry();
+  const pos = [];
+  const rings = 7, segs = 12;
+  const push = (px, py, pz) => { pos.push(px, py, pz); };
+  // 水平扇（地面）＋垂直張開的前緣，短促顯示攻擊範圍
+  for (let i = 0; i <= segs; i++) {
+    const a = yaw - hAng + (2 * hAng * i) / segs;
+    const x1 = x + Math.sin(a) * range, z1 = z + Math.cos(a) * range;
+    push(x, 0.04, z); push(x1, 0.04, z1);
+  }
+  const pitch0 = Math.atan2(fy, Math.hypot(fx, fz));
+  for (const sign of [-1, 0, 1]) {
+    const pit = pitch0 + sign * vAng;
+    const cy = Math.cos(pit), sy = Math.sin(pit);
+    for (let i = 0; i < segs; i++) {
+      const a0 = yaw - hAng + (2 * hAng * i) / segs;
+      const a1 = yaw - hAng + (2 * hAng * (i + 1)) / segs;
+      const y1 = y + sy * range, y0 = y;
+      push(x, y, z);
+      push(x + Math.sin(a0) * range * cy, y + sy * range, z + Math.cos(a0) * range * cy);
+      push(x, y, z);
+      push(x + Math.sin(a1) * range * cy, y + sy * range, z + Math.cos(a1) * range * cy);
+    }
+  }
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xff8a4a, transparent: true, opacity: .45, depthWrite: false });
+  const mesh = new THREE.LineSegments(geo, mat);
+  mesh.renderOrder = 8; scene.add(mesh);
+  smashFans.push({ mesh, t: 0 });
+}
+function updateSmashFans(dt) {
+  for (let i = smashFans.length - 1; i >= 0; i--) {
+    const f = smashFans[i]; f.t += dt;
+    const k = 1 - f.t / .45;
+    if (f.mesh.material) f.mesh.material.opacity = Math.max(0, k) * .45;
+    if (f.t >= .45) {
+      scene.remove(f.mesh);
+      f.mesh.geometry.dispose(); f.mesh.material.dispose();
+      smashFans.splice(i, 1);
+    }
+  }
 }
 const debrisPieces = [];
 const debrisSeen = new Set();
@@ -2035,7 +2209,7 @@ function updatePaint(dt) {
 function syncHiddenProps(phase, players) {
   const held = new Set(); if (phase === 'hide' || phase === 'seek') for (const q of players) if (q.role === 'hider' && q.alive && q.prop >= 0) held.add(q.prop);
   const smashed = new Set(G.s?.smashed || []);
-  propObjs.forEach((g, i) => { const h = held.has(i) || smashed.has(i); g.visible = !h; if (g.userData.col) g.userData.col.off = h; });
+  propObjs.forEach((g, i) => { const h = held.has(i) || smashed.has(i); g.visible = !h; if (g.userData.cols) for (const c of g.userData.cols) c.off = h; else if (g.userData.col) g.userData.col.off = h; });
 }
 function visibleChain(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
 function pickAt(cx, cy) {
@@ -2091,11 +2265,24 @@ addEventListener('keydown', e => {
 addEventListener('wheel', e => { if (isTyping(e.target)) return; const p = me(); if (p?.prop >= 0 && p.alive) { local.py += Math.sign(e.deltaY) * .26; } }, { passive: true });
 addEventListener('keyup', e => { keys[e.code] = false; });
 const drags = new Map();
-renderer.domElement.addEventListener('pointerdown', e => { drags.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() }); try { renderer.domElement.setPointerCapture(e.pointerId); } catch { } });
+renderer.domElement.addEventListener('pointerdown', e => {
+  drags.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), btn: e.button, moved: 0 });
+  try { renderer.domElement.setPointerCapture(e.pointerId); } catch { }
+});
 renderer.domElement.addEventListener('pointermove', e => { const d = drags.get(e.pointerId); if (!d) return;
+  d.moved = Math.max(d.moved || 0, Math.hypot(e.clientX - d.sx, e.clientY - d.sy));
   cam.yaw -= (e.clientX - d.x) * .006; cam.pitch = Math.max(CFG.PITCH_MIN, Math.min(CFG.PITCH_MAX, cam.pitch + (e.clientY - d.y) * .005)); d.x = e.clientX; d.y = e.clientY; });
 const endDrag = e => { const d = drags.get(e.pointerId); if (!d) return; drags.delete(e.pointerId);
-  if (e.type === 'pointerup' && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 10 && performance.now() - d.t < 400) onTap(e.clientX, e.clientY); };
+  if (e.type !== 'pointerup') return;
+  const dist = Math.hypot(e.clientX - d.sx, e.clientY - d.sy);
+  const dt = performance.now() - d.t;
+  if (d.btn === 2) {
+    // 右鍵：短點＋幾乎沒移動＝破壞（僅鬼）；拖曳只轉鏡頭，不砸
+    if (dist < 5 && (d.moved || 0) < 5 && dt < 200 && me()?.role === 'seeker') doSmash();
+    return;
+  }
+  if (dist < 10 && dt < 400) onTap(e.clientX, e.clientY);
+};
 renderer.domElement.addEventListener('pointerup', endDrag); renderer.domElement.addEventListener('pointercancel', endDrag);
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 { // 搖桿
@@ -2279,7 +2466,7 @@ function updateUI() {
   $('stamFill').style.width = (local.stam / CFG.STAMINA * 100) + '%';
   $('stamFill').style.background = local.exhausted ? '#ff8fa3' : '#7fe0d8';
   const lastMin = s.phase === 'seek' && rem <= CFG.CHIRP_WINDOW;
-  $('hint').textContent = seeker ? (isTouch ? '點畫面發射顏料｜打中假家具就抓到｜破壞可砸碎面前家具｜空白鍵/跳 可上家具｜衝刺會耗體力' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜拖曳轉鏡頭（可抬頭）｜點擊發射顏料（真家具 -10、牆地 -2）｜G 破壞面前家具') + (lastMin ? '｜最後 1 分鐘聽聲響找人' : '')
+  $('hint').textContent = seeker ? (isTouch ? '點畫面發射顏料｜打中假家具就抓到｜破壞可砸碎面前家具｜空白鍵/跳 可上家具｜衝刺會耗體力' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜拖曳轉鏡頭（可抬頭）｜點擊發射顏料（真家具 -10、牆地 -2）｜G 或右鍵點一下破壞面前家具') + (lastMin ? '｜最後 1 分鐘聽聲響找人' : '')
     : canAct ? (isTouch ? (local.mounted ? '在牆上滑動｜跳下來後往牆跳可再貼上' : '點家具 → 變身｜跳上家具｜衝刺｜噴漆可糊住鬼') : (local.mounted ? 'W/S 上下、A/D 左右沿牆滑動，空白鍵跳下來（往牆跳可再貼牆）' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜F 無限變身｜Q/E 轉家具｜T 噴漆｜Enter 聊天')) + (lastMin ? '｜最後 1 分鐘會發出聲響' : '') : '可以到處看看誰還沒被抓';
   const end = s.phase === 'end'; $('endBox').classList.toggle('hidden', !end);
   if (end) { const win = (s.winner === 'seeker') === seeker; $('endTitle').textContent = (s.winner === 'seeker' ? '🕵️ 鬼贏了！' : '🐣 躲藏者贏了！') + (p ? (win ? ' 你贏了 🎉' : ' 下次加油') : '');
@@ -2394,7 +2581,7 @@ useMap('home'); buildHouse(); addLights();
 useMap('office'); OFFICE.buildOfficeShell({ THREE, root: ROOT, colliders, wallMeshes, ceilings: houseCeiling, LOW, mergeGeometries });
 setMap('home');
 homeMsg('載入家具中…');
-loadModels().then(() => { placeProps(); ready = true; homeMsg(''); }).catch(e => homeMsg('載入失敗：' + e));
+loadModels().then(() => { bakeCompounds(); placeProps(); ready = true; homeMsg(''); }).catch(e => homeMsg('載入失敗：' + e));
 cam.yaw = Math.PI * .8; cam.pitch = .9;
 requestAnimationFrame(loop);
 
@@ -2433,7 +2620,13 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   buddyScale: id => visuals.get(id)?.buddy?.scale.x ?? null,
   get curMap() { return curMap; }, HOME_PROP_N, propMap, MAPS,
   mapGroupVisible: id => !!MAPS[id]?.group.visible, activePropCount: () => propObjs.filter((g, i) => propMap(i) === curMap && g.visible).length,
-  colliderCount: () => colliders.length, collideAt: (x, z, r) => collide(x, z, 0, r ?? .33),
+  colliderCount: () => colliders.length, collideAt: (x, z, r, y) => collide(x, z, y ?? 0, r ?? .33),
+  BODY_H: CFG.BODY_H,
+  propCols: i => propObjs[i]?.userData.cols || [],
+  compoundOf: n => modelCache[n]?.cols || [],
+  landAt: (x, z, y, ny, r) => landY(x, z, y, ny, r ?? playR()),
+  inSmashCone, smashAim, propInSmashCone,
+
   selectMap(id) { send({ t: 'map', id }); },
   setMapLocal(id) { setMap(id); },
   seekMs: seekMsFor, HIDE_MS: CFG.HIDE_MS,
@@ -2443,7 +2636,7 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   isSmashed: i => !!(G.s?.smashed || []).includes(i) || !!propObjs[i]?.userData.smashed,
   smashedIds: () => [...(G.s?.smashed || [])],
   debrisCount: () => debrisPieces.length,
-  canSmashProp, SMASH_IMMUNE, SMASH_RANGE: CFG.SMASH_RANGE, SMASH_ANGLE: CFG.SMASH_ANGLE, SMASH_CD: CFG.SMASH_CD, SMASH_LOCK: CFG.SMASH_LOCK,
+  canSmashProp, SMASH_IMMUNE, SMASH_RANGE: CFG.SMASH_RANGE, SMASH_ANGLE: CFG.SMASH_ANGLE, SMASH_VANGLE: CFG.SMASH_VANGLE, SMASH_CD: CFG.SMASH_CD, SMASH_LOCK: CFG.SMASH_LOCK,
   tfLockRem: () => me()?.tfLock || 0,
   resetSmashCd() { if (Q.get('net') === 'local') send({ t: 'testsmashready' }); lastSmashAt = 0; },
   setSeekerNeed(n) { if (Q.get('net') === 'local') send({ t: 'testseekneed', n }); },
