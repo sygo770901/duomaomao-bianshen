@@ -1,0 +1,8 @@
+躲貓貓變身 – 素材來源
+- 家具 3D 模型：Kenney "Furniture Kit" 2.0 (https://kenney.nl/assets/furniture-kit)，CC0 授權（見 models/KENNEY-LICENSE.txt）
+  v6 辦公室地圖另外用到的同一套件模型（皆 CC0）：computerKeyboard、computerMouse、chairModernCushion、chairModernFrameCushion、chairRounded、tableRound、loungeDesignChair、bookcaseOpen、bookcaseClosed、kitchenFridgeSmall、kitchenBarEnd、stoolBarSquare、bench、bedBunk、toiletSquare、tableCoffeeGlass、radio、speakerSmall
+- 角色、曬衣架、毛巾架、鞋櫃、掛畫、時鐘、腳踏墊、洗衣雜物、書櫃書籍、客廳玩具與電玩設備、廚房餐具、牆壁地板：程式內用簡單幾何形狀產生
+- 辦公室地圖（v6）：白板、海報、懶骨頭、零食櫃、飲料販賣機、飲水機、印表機、置物櫃、檔案櫃、桌球桌、手足球台、街機、鋼琴、會議長桌、接待櫃台、紙堆、零食盒、水果盤、玻璃隔間／弧形帷幕、樓梯、電梯門、樹木、牆壁地板天花板：全部程式內用簡單幾何形狀產生（沒有外部素材）
+- 辦公室平面配置參考使用者提供的 2F 平面圖（floorplan-office.jpg，僅作為配置參考，不隨網站發佈）
+- 顏料噴濺音效：WebAudio 即時合成，沒有外部音檔（取代舊的嘲諷怪聲）
+- Three.js r160（MIT，vendor/three-LICENSE.txt）、PeerJS 1.5.4（MIT，vendor/peerjs-LICENSE.txt）
