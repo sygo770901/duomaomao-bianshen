@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LocalPeer } from './localnet.js';
 import * as OFFICE from './office.js';
+import * as LUCKY from './lucky.js';
 import { buildCompound } from './compound.js';
 
 // ---------- 設定 ----------
@@ -13,6 +14,7 @@ const CFG = {
   SEEK_MS: (+Q.get('seek') || 180) * 1000,
   SEEK_MS_HOME: 180 * 1000,
   SEEK_MS_OFFICE: 300 * 1000,
+  SEEK_MS_LUCKY: 240 * 1000, // 福貓辦公室：面積介於小家和新創辦公室之間 → 4 分鐘
   CHIRP_WINDOW: 60 * 1000, // 找人最後 1 分鐘開始發出聲響
   CHIRP_EVERY: 20 * 1000,
   NEAR_RANGE: 5, // 鬼附近提示最遠距離（世界單位＝公尺）
@@ -35,7 +37,7 @@ const CFG = {
 };
 const PeerImpl = Q.get('net') === 'local' ? LocalPeer : window.Peer; // ?net=local 只給自動化測試
 function defaultHideMs() { return 30 * 1000; }
-function defaultSeekMs(map) { return (map === 'office' ? CFG.SEEK_MS_OFFICE : CFG.SEEK_MS_HOME); }
+function defaultSeekMs(map) { return (map === 'office' ? CFG.SEEK_MS_OFFICE : map === 'lucky' ? CFG.SEEK_MS_LUCKY : CFG.SEEK_MS_HOME); }
 function seekMsFor(map) {
   if (Q.get('seek')) return Math.max(1000, (+Q.get('seek') || 180) * 1000);
   return defaultSeekMs(map);
@@ -143,8 +145,10 @@ const DECOR = [
 ];
 const HOME_PROP_N = PROPS.length; // 0..HOME_PROP_N-1 = 家（原本的地圖），之後 = 辦公室
 PROPS.push(...OFFICE.PROPS);
-const propMap = i => i < HOME_PROP_N ? 'home' : 'office';
-const WALL_PROP = new Set(['frameA', 'frameB', 'clock', 'bear', ...OFFICE.OFFICE_WALL]);
+const LUCKY_START = PROPS.length; // 之後 = 福貓辦公室
+PROPS.push(...LUCKY.PROPS);
+const propMap = i => i < HOME_PROP_N ? 'home' : i < LUCKY_START ? 'office' : 'lucky';
+const WALL_PROP = new Set(['frameA', 'frameB', 'clock', 'bear', ...OFFICE.OFFICE_WALL, ...LUCKY.LUCKY_WALL]);
 // 窗戶在牆面上的禁區 [axis, pos, tCenter, yCenter, halfT, halfY]（掛飾不可滑進去）
 let WINDOW_HOLES = [
   ['z', 8.98, 1.5, 1.55, .8, .55], ['z', 8.98, 11.0, 1.55, .8, .55],
@@ -160,7 +164,7 @@ const SMALL = new Set(['chairCushion','chairDesk','stoolBar','loungeChair','loun
   'kitchenMicrowave','laptop','computerScreen','lampRoundTable','lampSquareTable','lampRoundFloor','lampSquareFloor',
   'speaker','coatRackStanding','laundryRack','towelRack','shoeRack','benchCushion',
   'gameConsole','handheldGame','gameController','toyBlocks','plushToy','toyCar','toyBall',
-  'plateStack','bowlStack','cupSet','mugSet','cookingPot','fryingPan','cuttingBoard','kettle','sauceBottles', ...OFFICE.OFFICE_SMALL]);
+  'plateStack','bowlStack','cupSet','mugSet','cookingPot','fryingPan','cuttingBoard','kettle','sauceBottles', ...OFFICE.OFFICE_SMALL, ...LUCKY.LUCKY_SMALL]);
 const SHELF_YS = { bookcaseFilled: [.46, .84, 1.22, 1.6], shelfBoxes: [.52, 1.0, 1.44] };
 // 破壞技能打不破的大件：床、沙發、衣櫃／櫃子、桌子／書桌，以及大型家電與固定設備
 const SMASH_IMMUNE = new Set([
@@ -173,7 +177,7 @@ const SMASH_IMMUNE = new Set([
   'kitchenFridgeLarge', 'kitchenFridgeSmall', 'washer', 'dryer',
   'bathtub', 'shower', 'showerRound', 'toilet', 'toiletSquare',
   'bathroomSink', 'bathroomSinkSquare', 'kitchenSink', 'kitchenStoveElectric', 'hoodModern',
-  'televisionModern', 'piano', 'arcade', 'vendingMachine',
+  'televisionModern', 'piano', 'arcade', 'vendingMachine', ...LUCKY.LUCKY_IMMUNE,
 ]);
 function canSmashProp(name) { return !!name && !SMASH_IMMUNE.has(name); }
 
@@ -213,13 +217,15 @@ let wallMeshes = [];  // 給鏡頭碰撞與點擊判定
 let pickProps = [];   // 每個家具的 mesh
 const propObjs = [];    // 家具 Group（index = prop id）
 let houseCeiling = [];
-const MAP_IDS = ['home', 'office'];
-const MAP_NAMES = { home: '🏠 溫馨小家', office: '🏢 新創辦公室' };
+const MAP_IDS = ['home', 'office', 'lucky'];
+const MAP_NAMES = { home: '🏠 溫馨小家', office: '🏢 新創辦公室', lucky: '🐱 福貓辦公室・LUCKY CAT 總部' };
 const MAPS = {
   home: { group: new THREE.Group(), colliders: [], wallMeshes: [], pickProps: [], ceilings: [], bounds: BOUNDS, holes: WINDOW_HOLES, hiders: HIDER_SPAWNS, seeker: SEEKER_SPAWN,
     seekers: [SEEKER_SPAWN, [5.5, -1.5]], sun: [-10, 18, 14], shadow: 16, lobbyAt: [-6, 3] },
   office: { group: new THREE.Group(), colliders: [], wallMeshes: [], pickProps: [], ceilings: [], bounds: OFFICE.BOUNDS, holes: OFFICE.WINDOW_HOLES, hiders: OFFICE.HIDER_SPAWNS, seeker: OFFICE.SEEKER_SPAWN,
     seekers: [OFFICE.SEEKER_SPAWN, [3.96, 1.15]], sun: [-12, 22, 16], shadow: 24, lobbyAt: [-6.2, 1.0] },
+  lucky: { group: new THREE.Group(), colliders: [], wallMeshes: [], pickProps: [], ceilings: [], bounds: LUCKY.BOUNDS, holes: LUCKY.WINDOW_HOLES, hiders: LUCKY.HIDER_SPAWNS, seeker: LUCKY.SEEKER_SPAWN,
+    seekers: [LUCKY.SEEKER_SPAWN, LUCKY.SEEKER_SPAWN2], sun: [-10, 24, 14], shadow: 18, lobbyAt: LUCKY.LOBBY_AT },
 };
 let ROOT = MAPS.home.group, curMap = 'home';
 function useMap(id) { // 建圖時：把全域陣列指到這張圖
@@ -369,10 +375,10 @@ function addLights() {
 }
 
 // 套件裡沒有的東西，用簡單幾何自己做（曬衣架、毛巾架、鞋櫃、掛畫、時鐘、腳踏墊）
-const PROC = [...OFFICE.OFFICE_PROC, 'laundryRack', 'towelRack', 'shoeRack', 'frameA', 'frameB', 'clock', 'bathMat', 'detergent', 'laundryBasket', 'ironBoard', 'broom', 'shelfBoxes', 'bookcaseFilled', 'booksFloor',
+const PROC = [...OFFICE.OFFICE_PROC, ...LUCKY.LUCKY_PROC, 'laundryRack', 'towelRack', 'shoeRack', 'frameA', 'frameB', 'clock', 'bathMat', 'detergent', 'laundryBasket', 'ironBoard', 'broom', 'shelfBoxes', 'bookcaseFilled', 'booksFloor',
   'gameConsole', 'handheldGame', 'gameController', 'toyBlocks', 'plushToy', 'toyCar', 'toyBall',
   'plateStack', 'bowlStack', 'cupSet', 'mugSet', 'cookingPot', 'fryingPan', 'cuttingBoard', 'kettle', 'sauceBottles'];
-const WALL_PROC = new Set(['frameA', 'frameB', 'clock', ...OFFICE.OFFICE_WALL]); // 掛牆的：y 是中心高度
+const WALL_PROC = new Set(['frameA', 'frameB', 'clock', ...OFFICE.OFFICE_WALL, ...LUCKY.LUCKY_WALL]); // 掛牆的：y 是中心高度
 function procModel(name) {
   const g = new THREE.Group(); const m = c => new THREE.MeshStandardMaterial({ color: c, roughness: .7 });
   const add = (w, h, d, c, x, y, z, rz = 0) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m(c)); b.position.set(x, y, z); b.rotation.z = rz; b.castShadow = true; g.add(b); };
@@ -516,7 +522,8 @@ function procModel(name) {
       const bt = new THREE.Mesh(new THREE.CylinderGeometry(br, br * 1.05, bh, 12), m(bc)); bt.position.set(bx, bh / 2, 0); bt.castShadow = true; g.add(bt);
       const cp = new THREE.Mesh(new THREE.CylinderGeometry(br * .5, br * .55, .04, 10), m(cc)); cp.position.set(bx, bh + .02, 0); g.add(cp);
     }
-  } else OFFICE.officeProc(THREE, name, g, add, m);
+  } else if (LUCKY.LUCKY_PROC.includes(name)) LUCKY.luckyProc(THREE, name, g, add, m);
+  else OFFICE.officeProc(THREE, name, g, add, m);
   g.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(g); if (!WALL_PROC.has(name)) g.position.y = -bb.min.y;
   return { obj: g, size: bb.getSize(new THREE.Vector3()) };
 }
@@ -525,7 +532,7 @@ const loader = new GLTFLoader();
 const modelCache = {};
 async function loadModels() {
   for (const n of PROC) { const r = procModel(n); modelCache[n] = { obj: flattenModel(r.obj), size: r.size }; }
-  const names = [...new Set([...PROPS, ...DECOR, ...OFFICE.DECOR].map(p => p[0]))].filter(n => !modelCache[n]);
+  const names = [...new Set([...PROPS, ...DECOR, ...OFFICE.DECOR, ...LUCKY.DECOR].map(p => p[0]))].filter(n => !modelCache[n]);
   await Promise.all(names.map(n => new Promise((res, rej) => loader.load(`models/${n}.glb`, g => {
     const inner = g.scene; inner.scale.setScalar(S); inner.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(inner); const c = bb.getCenter(new THREE.Vector3());
@@ -639,7 +646,7 @@ function placeProps() {
       g.userData.shelves = shelves;
     }
   });
-  for (const [id, list] of [['home', DECOR], ['office', OFFICE.DECOR]]) { useMap(id);
+  for (const [id, list] of [['home', DECOR], ['office', OFFICE.DECOR], ['lucky', LUCKY.DECOR]]) { useMap(id);
     list.forEach(([n, x, z, r, y = 0]) => {
       const g = makeModel(n); g.position.set(x, y, z); g.rotation.y = r * Math.PI / 180; addGlow(g, n);
       tagMeshes(g, { kind: 'deco' }); ROOT.add(g); g.traverse(o => o.isMesh && wallMeshes.push(o));
@@ -1918,7 +1925,7 @@ function update(dt) {
     const solids = wallMeshes.filter(w => w.userData.kind === 'wall' || w.userData.kind === 'ceiling' || w.userData.kind === 'floor');
     const h = ray.intersectObjects(solids, false)[0]; if (h) d = Math.max(.6, h.distance - .25); }
   camera.position.copy(focus).addScaledVector(dir, d); camera.lookAt(focus);
-  for (const c of houseCeiling) c.visible = !debugCam;
+  for (const c of houseCeiling) c.visible = !debugCam || debugCam[2] === true; // debugCam[2]=true：截圖時保留天花板
   if (debugCam) { camera.position.set(...debugCam[0]); camera.lookAt(...debugCam[1]); }
 
   // 躲的人：準心瞄準家具
@@ -2579,6 +2586,7 @@ let ready = false, last = performance.now();
 function loop(t) { const dt = Math.min(.1, (t - last) / 1000); last = t; update(dt); if (G.s && G.s.phase !== 'lobby') updateUI(); renderer.render(scene, camera); requestAnimationFrame(loop); }
 useMap('home'); buildHouse(); addLights();
 useMap('office'); OFFICE.buildOfficeShell({ THREE, root: ROOT, colliders, wallMeshes, ceilings: houseCeiling, LOW, mergeGeometries });
+useMap('lucky'); LUCKY.buildLuckyShell({ THREE, root: ROOT, colliders, wallMeshes, ceilings: houseCeiling, LOW, mergeGeometries });
 setMap('home');
 homeMsg('載入家具中…');
 loadModels().then(() => { bakeCompounds(); placeProps(); ready = true; homeMsg(''); }).catch(e => homeMsg('載入失敗：' + e));
@@ -2618,12 +2626,13 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   disguiseHasLight: id => { const d = visuals.get(id)?.disguise; if (!d) return false; let ok = false; d.traverse(o => { if (o.isLight || o.isSprite) ok = true; }); return ok; },
   disguisePointLightCount: id => { const d = visuals.get(id)?.disguise; if (!d) return 0; let n = 0; d.traverse(o => { if (o.isLight) n++; }); return n; },
   buddyScale: id => visuals.get(id)?.buddy?.scale.x ?? null,
-  get curMap() { return curMap; }, HOME_PROP_N, propMap, MAPS,
+  get curMap() { return curMap; }, HOME_PROP_N, LUCKY_START, LUCKY_N: LUCKY.PROPS.length, LUCKY_ROOMS: LUCKY.ROOMS, propMap, MAPS,
   mapGroupVisible: id => !!MAPS[id]?.group.visible, activePropCount: () => propObjs.filter((g, i) => propMap(i) === curMap && g.visible).length,
   colliderCount: () => colliders.length, collideAt: (x, z, r, y) => collide(x, z, y ?? 0, r ?? .33),
   BODY_H: CFG.BODY_H,
   propCols: i => propObjs[i]?.userData.cols || [],
   compoundOf: n => modelCache[n]?.cols || [],
+  modelSize: n => { const z = modelCache[n]?.size; return z ? [+z.x.toFixed(3), +z.y.toFixed(3), +z.z.toFixed(3)] : null; },
   landAt: (x, z, y, ny, r) => landY(x, z, y, ny, r ?? playR()),
   inSmashCone, smashAim, propInSmashCone,
 
