@@ -15,7 +15,7 @@
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>躲貓貓變身 – 三房兩廳公寓</title>
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 <script src="vendor/peerjs.min.js"></script>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/jsm/"}}</script>
 </head>
@@ -56,7 +56,7 @@
         <li><b>🕵️ 鬼</b>：前 30 秒閉眼，之後用顏料槍打假家具抓人。打錯會扣血，血沒了就不能射；「破壞」可砸碎面前的小家具。</li>
         <li><b>誰贏</b>：時間內全部抓到＝鬼贏；時間到還有人沒被抓，或鬼的血用完＝躲藏者贏。</li>
         <li><b>💻 電腦</b>：WASD 走、Shift 衝刺、空白鍵跳、拖曳轉鏡頭；F 變身、Q/E 轉家具、T 噴漆；鬼點擊射擊、G 破壞；Enter 聊天。</li>
-        <li><b>📱 手機</b>：左下搖桿走路、拖曳畫面轉鏡頭；點家具再按「變身」；鬼點畫面射擊；右邊按鈕跳、衝刺、破壞。</li>
+        <li><b>📱 手機</b>：左下搖桿走路（走路時也可按跳）；按住衝刺並拖曳可一邊跑一邊轉鏡頭；點家具再按「變身」；鬼點畫面射擊。聊天是半透明小欄，送出後會自動收起。</li>
         <li><b>👻 被抓之後</b>：自動跟著其他玩家看（←/→、Q/E 或 ◀ ▶ 換人），按 V／Tab 或「自由飛」自己到處看。只有被抓的人看得到還躲著的人（發光外框）。</li>
       </ul>
     </details>
@@ -102,7 +102,6 @@
         <div class="colorRow" id="lobbyColors"></div>
         <div class="avatarRow" id="lobbyAvatars"></div>
       </div>
-      <div id="diceTray"><canvas id="diceCanvas" aria-label="擲骰桌"></canvas><button type="button" id="muteBtn" title="音效開關">🔊</button></div>
       <div id="diceMsg" class="diceMsg"></div>
       <div id="lobbyActions" class="lobbyActions">
         <button id="readyBtn" type="button">準備</button>
@@ -111,17 +110,20 @@
       <button id="startBtn" class="primary hidden">開始遊戲</button>
       <p id="lobbyMsg" class="msg"></p>
     </div>
-    <div class="card chatCard" id="chatBox">
-      <div class="chatHead">
-        <span>聊天</span>
-        <button type="button" id="chatHide" class="chatIconBtn hidden" title="收合">收合</button>
+    <div class="lobbySide" id="lobbySide">
+      <div id="diceTray"><canvas id="diceCanvas" aria-label="擲骰桌"></canvas><button type="button" id="muteBtn" title="音效開關">🔊</button></div>
+      <div class="card chatCard" id="chatBox">
+        <div class="chatHead">
+          <span>聊天</span>
+          <button type="button" id="chatHide" class="chatIconBtn hidden" title="收合">收合</button>
+        </div>
+        <div id="chatLog"></div>
+        <div id="chatEmojis"></div>
+        <form id="chatForm" autocomplete="off">
+          <input id="chatIn" maxlength="80" placeholder="說點什麼…" autocomplete="off">
+          <button type="submit" id="chatSend">送出</button>
+        </form>
       </div>
-      <div id="chatLog"></div>
-      <div id="chatEmojis"></div>
-      <form id="chatForm" autocomplete="off">
-        <input id="chatIn" maxlength="80" placeholder="說點什麼…" autocomplete="off">
-        <button type="submit" id="chatSend">送出</button>
-      </form>
     </div>
   </div>
   <div id="diePop" class="hidden" aria-live="polite">
@@ -168,6 +170,6 @@
   <div id="endBox" class="hidden"><div id="endTitle"></div><div id="endSub"></div></div>
 </div>
 
-<script type="module" src="game.js?v=14"></script>
+<script type="module" src="game.js?v=15"></script>
 </body>
 </html>

@@ -2,11 +2,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js?v=14';
-import * as OFFICE from './office.js?v=14';
-import * as LUCKY from './lucky.js?v=14';
-import { buildCompound, refineWithHeightfield } from './compound.js?v=14';
-import { createDiceTable } from './dice3d.js?v=14';
+import { LocalPeer } from './localnet.js?v=15';
+import * as OFFICE from './office.js?v=15';
+import * as LUCKY from './lucky.js?v=15';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=15';
+import { createDiceTable } from './dice3d.js?v=15';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -33,6 +33,7 @@ const CFG = {
   JUMP_V: 7.4, GRAVITY: 20, STEP_UP: .42, // 跳躍約 1.35 米，可踩上矮櫃／床／桌
   BODY_H: .8, // 角色碰撞身高（可從夠高的桌下穿過）
   PITCH_MIN: -80 * Math.PI / 180, PITCH_MAX: 70 * Math.PI / 180, // 可抬頭看天花板／櫃子頂
+  CAM_DIST: 2.8, CAM_DIST_TOUCH: 4.4, // 第三人稱距離；手機畫面小，鏡頭再拉遠一點
   SPRINT: 1.6, STAMINA: 3, STAMINA_REGEN: 4, STAMINA_DELAY: .5, STAMINA_RESTART: .3, // 衝刺 3 秒，停 0.5 秒後 4 秒回滿；耗盡要回到 30% 才能再衝
   TF_RANGE: 4.0, PREFIX: 'cozyhouse-prophunt-v1-',
 };
@@ -1577,6 +1578,11 @@ const local = { x: -6, z: 3, y: 0, vy: 0, grounded: true, mounted: false, mntAxi
 let rotHold = 0; // 手機旋轉按鈕：-1 左轉、1 右轉
 let sprintHold = false, jumpQueued = false;
 const cam = { yaw: Math.PI, pitch: .45, dist: 4.5 };
+function camIdealDist(height) { // 手機畫面較小，鏡頭拉遠才看得到周圍；碰撞拉近仍走 v14 的邏輯
+  if (cam.forceIdeal > 0) return cam.forceIdeal;
+  if (isTouch) return height != null ? Math.max(3.6, height * 4.0) : CFG.CAM_DIST_TOUCH;
+  return height != null ? Math.max(2.3, height * 2.6) : CFG.CAM_DIST;
+}
 const keys = {}; const joy = { x: 0, y: 0 }; const holdMove = { ix: 0, iz: 0, sprint: false }; // 測試用：不受 keyup 干擾
 let target = null; // 躲的人：目前瞄準要變身的家具 id
 const ray = new THREE.Raycaster();
@@ -2024,12 +2030,12 @@ function update(dt) {
   // 鏡頭
   const myV = visuals.get(net.myId);
   const dp = p?.prop >= 0 ? propObjs[p.prop]?.userData : null;
-  let dist = dp ? Math.max(2.3, dp.height * 2.6) : 2.8;
+  let dist = camIdealDist(dp ? dp.height : null);
   const focusY = local.mounted ? local.y : ((dp ? Math.max(.45, dp.height * .75) : (p?.role === 'seeker' ? .62 : .42)) + local.y);
   const focus = new THREE.Vector3(local.x, focusY, local.z);
   const tv = specFollowing() ? visuals.get(spec.target) : null;
   if (tv) { const tp = tv.p, tdp = tp?.prop >= 0 ? propObjs[tp.prop]?.userData : null; // 跟隨觀戰：鏡頭繞著被看的人
-    dist = tdp ? Math.max(2.3, tdp.height * 2.6) : 2.8;
+    dist = camIdealDist(tdp ? tdp.height : null);
     focus.set(tv.root.position.x, tp?.mnt ? tv.root.position.y : tv.root.position.y + (tdp ? Math.max(.45, tdp.height * .75) : (tp?.role === 'seeker' ? .62 : .42)), tv.root.position.z); }
   if (!p) { focus.set(0, 0, 0); }
   const dir = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch));
@@ -2440,10 +2446,14 @@ $('lockBtn').addEventListener('click', toggleLock);
 for (const [id, dir] of [['rotL', -1], ['rotR', 1]]) { const b = $(id);
   b.addEventListener('pointerdown', e => { rotHold = dir; try { b.setPointerCapture(e.pointerId); } catch { } });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { if (rotHold === dir) rotHold = 0; }); }
-$('jumpBtn').addEventListener('click', doJump);
-{ const b = $('sprintBtn');
-  b.addEventListener('pointerdown', e => { sprintHold = true; try { b.setPointerCapture(e.pointerId); } catch { } });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { sprintHold = false; }); }
+$('jumpBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); doJump(); });
+$('jumpBtn').addEventListener('click', e => { e.preventDefault(); doJump(); }); // click()／測試仍要跳；與 pointerdown 重入只是再設一次 jumpQueued
+{ const b = $('sprintBtn'); let sprintPid = null, sx = 0, sy = 0;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); sprintHold = true; sprintPid = e.pointerId; sx = e.clientX; sy = e.clientY; try { b.setPointerCapture(e.pointerId); } catch { } });
+  b.addEventListener('pointermove', e => { if (e.pointerId !== sprintPid) return; // 按住衝刺並拖曳＝邊衝邊轉鏡頭
+    cam.yaw -= (e.clientX - sx) * .006; cam.pitch = Math.max(CFG.PITCH_MIN, Math.min(CFG.PITCH_MAX, cam.pitch + (e.clientY - sy) * .005)); sx = e.clientX; sy = e.clientY; });
+  const sprintUp = e => { if (sprintPid != null && e.pointerId !== sprintPid) return; sprintHold = false; sprintPid = null; };
+  for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, sprintUp); }
 
 // ---------- 介面 ----------
 function homeMsg(t) { $('homeMsg').textContent = t; }
@@ -2456,7 +2466,7 @@ function applyChatFeedPref() {
 function showScreen(n) {
   $('home').classList.toggle('hidden', n !== 'home'); $('lobby').classList.toggle('hidden', n !== 'lobby'); $('hud').classList.toggle('hidden', n !== 'game');
   const box = $('chatBox');
-  if (box && n === 'lobby') { $('lobby').querySelector('.lobbyLayout').appendChild(box); box.classList.remove('collapsed'); if ($('chatFeed')) $('chatFeed').innerHTML = ''; }
+  if (box && n === 'lobby') { ($('lobbySide') || $('lobby').querySelector('.lobbyLayout')).appendChild(box); box.classList.remove('collapsed'); if ($('chatFeed')) $('chatFeed').innerHTML = ''; }
   if (box && n === 'game') { $('hud').appendChild(box); box.classList.add('collapsed'); $('chatIn')?.blur(); applyChatFeedPref(); }
   if (box) box.classList.toggle('hidden', n === 'home');
   if (n === 'home') sbFetchRooms();
@@ -2476,7 +2486,7 @@ function playThrow(tn, th, fromEv) {
   if (first || !th?.length) return; // 剛進房間看到的是舊的擲骰：直接擺好就好（syncDiceTray 會處理）
   if (!tray || $('lobby').classList.contains('hidden')) { const mine = th.find(a => a[0] === net.myId) || th[0]; showDiePop({ id: mine[0], n: mine[1], name: G.s?.players.find(q => q.id === mine[0])?.name || '' }); return; }
   tray.throwMany(th.map(([id, n, seed]) => [id, diceInfo(id, n, seed)])); for (const a of th) { traySeen.delete(a[0]); dieTn.set(a[0], tn); } diceStat.thrown += th.length; diceStat.throws++;
-  const el = $('diceTray'); if (el) { const r = el.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } // 確保大家看得到整個擲骰過程
+  const el = $('diceTray'); if (el) { const r = el.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) el.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } // 確保大家看得到整個擲骰過程
   updateUI();
 }
 function syncDiceTray(s) {
@@ -2729,14 +2739,16 @@ if (!localStorage.getItem('ph-avatar')) localStorage.setItem('ph-avatar', AVATAR
 paintLooks();
 $('nameIn').addEventListener('change', () => { getProfile(); sendProfile(); });
 $('chatEmojis').innerHTML = CHAT_EMOJIS.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
-$('chatEmojis').addEventListener('click', e => { const b = e.target.closest('button'); if (b) sendChat(b.dataset.emoji); });
+$('chatEmojis').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { sendChat(b.dataset.emoji); closeGameChat(); } });
+function closeGameChat() {
+  if ($('hud').classList.contains('hidden')) return;
+  $('chatIn')?.blur();
+  $('chatBox')?.classList.add('collapsed');
+}
 $('chatForm').addEventListener('submit', e => {
   e.preventDefault();
   sendChat($('chatIn').value); $('chatIn').value = '';
-  if (!$('hud').classList.contains('hidden')) {
-    $('chatIn').blur();
-    if (!isTouch) $('chatBox').classList.add('collapsed');
-  }
+  closeGameChat();
 });
 function sendChat(text) { const t = String(text || '').trim(); if (!t || !net.myId) return; send({ t: 'chat', text: t }); }
 $('chatToggle').onclick = () => { $('chatBox').classList.toggle('collapsed'); if (!$('chatBox').classList.contains('collapsed')) { renderChat(); $('chatIn').focus(); } };
@@ -2849,6 +2861,8 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   visibleHullCount() { let n = 0; scene.traverse(o => { if (o.isMesh && o.userData.hull && visibleChain(o)) n++; }); return n; },
   visibleSpecTagCount() { let n = 0; scene.traverse(o => { if (o.isSprite && o.userData.specTag && visibleChain(o)) n++; }); return n; },
   camPos: () => [camera.position.x, camera.position.y, camera.position.z],
+  camIdealDist, camPullDist: () => camD.cur, isTouch: () => isTouch,
+  get sprintHold() { return sprintHold; }, get jumpQueued() { return jumpQueued; }, joy,
   bodyPen: R => bodyPenetration(R), camFadedIds: () => [...camFaded.keys()], visTopAt(x, z, id) { const rc = new THREE.Raycaster(new THREE.Vector3(x, 4, z), new THREE.Vector3(0, -1, 0), 0, 4); const ms = []; propObjs[id].traverse(o => o.isMesh && ms.push(o)); const h = rc.intersectObjects(ms, false)[0]; return h ? h.point.y : null; }, camOccluded, playR, get stepUp() { return CFG.STEP_UP; },
   isSmashed: i => !!(G.s?.smashed || []).includes(i) || !!propObjs[i]?.userData.smashed,
   smashedIds: () => [...(G.s?.smashed || [])],

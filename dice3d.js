@@ -120,18 +120,22 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
     faceCache.set(color, mats); return mats;
   }
   const dieGeo = new THREE.BoxGeometry(1, 1, 1);
+  const TAG_W = 1.85, TAG_H = .46;
   function makeTag() { const cv = document.createElement('canvas'); cv.width = 320; cv.height = 80; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(2.6, .65, 1); s.renderOrder = 5; s.userData = { cv, t, key: '' }; return s; }
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(TAG_W, TAG_H, 1); s.renderOrder = 5; s.userData = { cv, t, key: '' }; return s; }
   function drawTag(s, text, bg, fg = '#fff') { if (s.userData.key === text + bg) return; s.userData.key = text + bg; const { cv, t } = s.userData, x = cv.getContext('2d');
-    x.clearRect(0, 0, 320, 80); x.font = 'bold 34px sans-serif'; const w = Math.min(312, x.measureText(text).width + 30);
-    x.fillStyle = bg; x.beginPath(); x.roundRect(160 - w / 2, 8, w, 64, 26); x.fill(); x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 160, 42, 300); t.needsUpdate = true; }
+    x.clearRect(0, 0, 320, 80); x.font = 'bold 30px sans-serif'; const w = Math.min(312, x.measureText(text).width + 28);
+    x.fillStyle = bg; x.beginPath(); x.roundRect(160 - w / 2, 10, w, 60, 22); x.fill(); x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 160, 42, 300); t.needsUpdate = true; }
   const ringGeo = new THREE.RingGeometry(.78, 1.0, 40); ringGeo.rotateX(-Math.PI / 2);
 
   const dice = new Map(); // id → { body, mesh, inner, tag, ring, n, name, color, settled, pre }
   let plan = null, frame = 0, acc = 0, lastTick = 0, lastW = 0, lastH = 0, status = { seekers: [], tied: [], done: false }, dirty = true;
   // 依畫布比例找最小的視角，讓整張桌子（含木框、骰子名牌）都在畫面內
   const FIT_PTS = []; for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) for (const y of [0, .6]) FIT_PTS.push(new THREE.Vector3(x, y, z));
-  for (const x of [-TX + .5, TX - .5]) FIT_PTS.push(new THREE.Vector3(x, 1.95, -TZ + .5), new THREE.Vector3(x, 1.95, TZ - .5));
+  for (const x of [-TX + .5, TX - .5]) {
+    FIT_PTS.push(new THREE.Vector3(x, 1.95, -TZ + .5), new THREE.Vector3(x, 1.95, TZ - .5));
+    FIT_PTS.push(new THREE.Vector3(x, 2.7, -TZ + .5), new THREE.Vector3(x, 2.7, TZ - .5)); // 名牌在骰子上方，鏡頭要留空
+  }
   for (const x of [-3.6, 3.6]) FIT_PTS.push(new THREE.Vector3(x, 3.4, .9)); // 剛丟出去、在空中的骰子
   const _fp = new THREE.Vector3();
   const CAM_DIR = new THREE.Vector3(0, 8.4, 5.15).normalize(), CAM_AT = new THREE.Vector3(0, .35, .25);
@@ -169,6 +173,53 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
   function applyFrame(f) { plan.ids.forEach((id, i) => { const d = dice.get(id); if (!d) return; const a = plan.frames[f][i]; if (!a) return; const b = d.body;
     b.x = [a[0], a[1], a[2]]; b.q = [a[3], a[4], a[5], a[6]]; b.v = [a[7], a[8], a[9]]; b.w = [a[10], a[11], a[12]]; }); }
 
+
+  const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _np = new THREE.Vector3();
+  function layoutTags() { // 名牌沿著鏡頭「上」放在骰子外頭，再左右推開，避免蓋住骰面或互相疊在一起
+    camera.updateMatrixWorld(true);
+    _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    const list = [...dice.values()].filter(d => d.body);
+    const hw = TAG_W * .5, hh = TAG_H * .5, pad = .1;
+    for (const d of list) {
+      d.tag.scale.set(TAG_W, TAG_H, 1);
+      const b = d.body, sc = d.mesh.scale.x || 1, dieR = .5 * Math.sqrt(3) * sc;
+      const dist = dieR + hh + .28;
+      d.tag.position.set(b.x[0] + _up.x * dist, b.x[1] + _up.y * dist, b.x[2] + _up.z * dist);
+    }
+    const axisDot = (p, q, ax) => (p.x - q[0]) * ax.x + (p.y - q[1]) * ax.y + (p.z - q[2]) * ax.z;
+    for (let it = 0; it < 10; it++) {
+      let moved = false;
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const a = list[i].tag.position, b = list[j].tag.position;
+        const dx = (b.x - a.x) * _right.x + (b.y - a.y) * _right.y + (b.z - a.z) * _right.z;
+        const dy = (b.x - a.x) * _up.x + (b.y - a.y) * _up.y + (b.z - a.z) * _up.z;
+        const ox = 2 * hw + pad - Math.abs(dx), oy = 2 * hh + pad - Math.abs(dy);
+        if (ox > 0 && oy > 0) {
+          if (ox <= oy) {
+            const s = (dx === 0 ? 1 : Math.sign(dx)) * ox * .52;
+            a.x -= _right.x * s; a.y -= _right.y * s; a.z -= _right.z * s;
+            b.x += _right.x * s; b.y += _right.y * s; b.z += _right.z * s;
+          } else {
+            const s = oy * .52, hi = dy >= 0 ? b : a;
+            hi.x += _up.x * s; hi.y += _up.y * s; hi.z += _up.z * s;
+          }
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    // 若推完仍跟任何一顆骰子的畫面範圍重疊，再往鏡頭上方挪
+    for (const d of list) {
+      const t = d.tag.position;
+      for (const o of list) {
+        const die = o.body, sc = o.mesh.scale.x || 1, dieH = .58 * sc;
+        const dx = axisDot(t, die.x, _right), dy = axisDot(t, die.x, _up);
+        const ox = hw + dieH + .08 - Math.abs(dx), oy = hh + dieH + .08 - Math.abs(dy);
+        if (ox > 0 && oy > 0) { const s = oy + .04; t.x += _up.x * s; t.y += _up.y * s; t.z += _up.z * s; }
+      }
+    }
+  }
   const api = {
     throwDie(id, info) { api.throwMany([[id, info]]); }, // info: { n, color, name, seed, slot }
     throwMany(list) { // 一次丟多顆（同一個物理世界一起算，會互相碰撞）
@@ -207,19 +258,37 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
       for (const d of dice.values()) { if (!d.body) continue; const b = d.body;
         d.mesh.position.set(b.x[0], b.x[1], b.x[2]); d.mesh.quaternion.set(b.q[0], b.q[1], b.q[2], b.q[3]); d.inner.quaternion.set(d.pre[0], d.pre[1], d.pre[2], d.pre[3]);
         const isSk = d.settled && status.done && status.seekers.includes(d.id), tied = d.settled && status.tied.includes(d.id) && !status.done; // 還在滾就先不公布
-        d.tag.position.set(b.x[0], b.x[1] + 1.05, b.x[2]);
         const txt = !d.settled ? d.name : isSk ? `👻 ${d.name}  ${d.n}` : `${d.name}  ${d.n}`;
         drawTag(d.tag, txt, isSk ? '#ff4f8b' : tied ? '#ff9f1c' : 'rgba(60,40,28,.78)');
         d.ring.visible = d.settled && (isSk || tied); d.ring.position.set(b.x[0], .02, b.x[2]); d.ring.material.color.set(isSk ? '#ff4f8b' : '#ff9f1c');
         if (d.ring.visible) { const s = 1 + .12 * Math.sin(t * 5); d.ring.scale.set(s, 1, s); dirty = true; }
         d.mesh.scale.setScalar(isSk && d.settled ? 1.12 : 1); }
+      layoutTags();
       if (dirty && shown && !lost) { renderer.render(scene, camera); dirty = false; api.frames++; }
     },
-    projected() { // 測試用：每顆骰子（含名牌）與桌角在畫面上的位置（NDC，-1..1 在畫面內）
+    projected() { // 測試用：骰子／名牌中心與畫面矩形（NDC，-1..1 在畫面內）
+      layoutTags(); camera.updateMatrixWorld(true); camera.updateProjectionMatrix();
+      _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+      _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
       const v = new THREE.Vector3(), out = { dice: [], corners: [] };
-      for (const d of dice.values()) { if (!d.body) continue; const b = d.body;
-        const a = v.set(b.x[0], b.x[1], b.x[2]).project(camera); const p1 = [a.x, a.y]; const t = v.set(b.x[0], b.x[1] + 1.35, b.x[2]).project(camera); out.dice.push({ id: d.id, p: p1, tag: [t.x, t.y] }); }
-      for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) { const a = v.set(x, .55, z).project(camera); out.corners.push([a.x, a.y]); }
+      const ndc = p => { v.copy(p).project(camera); return [v.x, v.y]; };
+      const rectFrom = (cx, cy, cz, hw, hh) => {
+        const pts = [];
+        for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+          pts.push(ndc(_np.set(cx, cy, cz).addScaledVector(_right, sx * hw).addScaledVector(_up, sy * hh)));
+        }
+        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+        return { x1: Math.min(...xs), x2: Math.max(...xs), y1: Math.min(...ys), y2: Math.max(...ys) };
+      };
+      const overlap = (a, b, pad = 0) => a.x1 < b.x2 - pad && a.x2 > b.x1 + pad && a.y1 < b.y2 - pad && a.y2 > b.y1 + pad;
+      for (const d of dice.values()) { if (!d.body) continue; const b = d.body, sc = d.mesh.scale.x || 1;
+        const p1 = ndc(_np.set(b.x[0], b.x[1], b.x[2]));
+        const tp = d.tag.position, p2 = ndc(_np.set(tp.x, tp.y, tp.z));
+        const dieR = rectFrom(b.x[0], b.x[1], b.x[2], .55 * sc, .55 * sc);
+        const tagR = rectFrom(tp.x, tp.y, tp.z, TAG_W * .5, TAG_H * .5);
+        out.dice.push({ id: d.id, p: p1, tag: p2, dieRect: dieR, tagRect: tagR, overlapDie: overlap(dieR, tagR, .01) }); }
+      out.tagOverlap = out.dice.some((a, i) => out.dice.some((b, j) => j > i && overlap(a.tagRect, b.tagRect, .01)));
+      for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) { out.corners.push(ndc(_np.set(x, .55, z))); }
       return out; },
     snap() { // 測試用：馬上重畫一次並讀回像素（粗略統計＋32×18 亮度格，用來比對前後兩格有沒有在動）
       if (api.resize() === false || lost) return null; renderer.render(scene, camera); const gl = renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4);
