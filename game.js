@@ -1703,6 +1703,40 @@ function tryStepUp(x, z, y, dx, dz, r) {
   }
   return best;
 }
+// ---------- 觀戰（v12）：被抓的躲藏者可跟隨活著的玩家，或切成自由飛的幽靈 ----------
+const spec = { mode: 'follow', target: null, was: false };
+function isSpectator() { const s = G.s, p = me(); return !!(s && p && p.role === 'hider' && !p.alive && (s.phase === 'hide' || s.phase === 'seek')); }
+function specFollowing() { return isSpectator() && spec.mode === 'follow'; }
+function specNext(dir = 1) { // 依玩家順序找下一位還活著的人（鬼或還躲著的人）
+  const s = G.s; if (!s) return; const all = s.players, n = all.length;
+  const ok = q => q.id !== net.myId && q.alive && (q.role === 'seeker' || q.role === 'hider');
+  let i = all.findIndex(q => q.id === spec.target); if (i < 0) i = dir > 0 ? -1 : n;
+  for (let k = 1; k <= n; k++) { const j = ((i + dir * k) % n + n) % n; if (ok(all[j])) { spec.target = all[j].id; return; } }
+  spec.target = null;
+}
+function specSetMode(m) {
+  if (!isSpectator()) return;
+  if (m === 'free' && spec.mode === 'follow') { const v = visuals.get(spec.target); // 自由飛從正在看的人旁邊開始
+    if (v) { [local.x, local.z] = collide(v.root.position.x, v.root.position.z, 0, playR()); local.y = 0; local.vy = 0; } }
+  spec.mode = m; if (m === 'follow') { const t = G.s.players.find(q => q.id === spec.target); if (!t || !t.alive) specNext(1); }
+  toast(m === 'follow' ? '🎥 跟隨觀戰' : '🕊 自由飛：自己到處看'); updateUI();
+}
+function specToggle() { if (isSpectator()) specSetMode(spec.mode === 'follow' ? 'free' : 'follow'); }
+function updateSpec() {
+  HULL_MAT.opacity = .6 + .35 * Math.sin(performance.now() / 260) ** 2;
+  const on = isSpectator();
+  if (on && !spec.was) { spec.mode = 'follow'; spec.target = null; specNext(1); }
+  if (!on) spec.target = null;
+  else if (spec.mode === 'follow') { const t = G.s.players.find(q => q.id === spec.target); if (!t || !t.alive) specNext(1); } // 目標被抓或離開 → 換下一位
+  spec.was = on;
+}
+const HULL_MAT = new THREE.MeshBasicMaterial({ color: '#ffe14d', side: THREE.BackSide, transparent: true, opacity: .8, depthWrite: false });
+function makeHull(d) { // 外框發光：把變身家具複製一份、放大一點、只畫背面
+  const h = d.clone(true); const drop = [];
+  h.traverse(o => { if (o.isLight || o.isSprite || o.isPoints) drop.push(o); else if (o.isMesh) { o.material = HULL_MAT; o.castShadow = o.receiveShadow = false; o.userData = { hull: true }; o.raycast = () => { }; } });
+  for (const o of drop) o.parent?.remove(o);
+  h.position.set(0, 0, 0); h.rotation.set(0, 0, 0); h.scale.setScalar(1.14); h.userData = { hull: true }; h.visible = false; d.add(h); return h;
+}
 function canMove() { const s = G.s, p = me(); if (!s || !p) return false;
   if (s.phase === 'lobby') return true; if (s.phase === 'end') return true;
   if (p.role === 'seeker' && s.phase === 'hide') return false; return true; }
@@ -1836,7 +1870,8 @@ function update(dt) {
     if (local.exhausted && local.stam >= CFG.STAMINA * CFG.STAMINA_RESTART) local.exhausted = false;
   }
   const r = playR();
-  if (p && canMove()) {
+  updateSpec();
+  if (p && canMove() && !specFollowing()) {
     if (local.mounted && isWallProp(p.prop)) {
       if (jumpQueued || keys.Space) { unmountFromWall(p.prop); jumpQueued = false; }
       else {
@@ -1899,7 +1934,7 @@ function update(dt) {
       if (v.disguise) { let dp2 = v.tpy - v.disguise.rotation.y; dp2 = Math.atan2(Math.sin(dp2), Math.cos(dp2)); v.disguise.rotation.y += dp2 * Math.min(1, k * 1.5); } }
     const disguised = vp.prop >= 0;
     const viewer = me(); const iAmSeeker = viewer?.role === 'seeker';
-    const visible = vp.alive || s?.phase === 'lobby' || s?.phase === 'end' || id === net.myId;
+    const visible = vp.alive || s?.phase === 'lobby' || s?.phase === 'end' || (id === net.myId && !specFollowing());
     v.root.visible = visible;
     v.buddy.visible = !disguised;
     // 名字：鬼看不到躲的人的名字（大廳/結束時大家都看得到）
@@ -1907,7 +1942,14 @@ function update(dt) {
     v.label.visible = visible && id !== net.myId && (open || !iAmSeeker || vp.role === 'seeker');
     // 被抓的自己變半透明幽靈
     const ghost = id === net.myId && !vp.alive && s?.phase !== 'lobby' && s?.phase !== 'end';
-    v.root.traverse(o => { if (o.isMesh) { o.material.transparent = ghost; o.material.opacity = ghost ? .35 : 1; } });
+    v.root.traverse(o => { if (o.isMesh && !o.userData.hull) { o.material.transparent = ghost; o.material.opacity = ghost ? .35 : 1; } });
+    // 觀戰者（只有被抓的人）看得到還躲著的人：家具外框發光＋名字
+    const specOn = isSpectator(), showHider = specOn && id !== net.myId && vp.role === 'hider' && vp.alive;
+    if (showHider && disguised && v.disguise && v.hullFor !== v.disguise) { v.hull = makeHull(v.disguise); v.hullFor = v.disguise; }
+    if (v.hull) v.hull.visible = !!(showHider && disguised && v.hullFor === v.disguise);
+    if (showHider && !v.specTag) { v.specTag = makeLabel('🫣 ' + vp.name, '#ffe14d'); v.specTag.userData.specTag = true; v.root.add(v.specTag); }
+    if (v.specTag) { v.specTag.visible = showHider; v.specTag.position.y = v.label.position.y; }
+    if (showHider) v.label.visible = false; // 觀戰時改用黃色的觀戰名字，不重複顯示
     if (v.note.visible && performance.now() > v.noteUntil) v.note.visible = false;
     if (v.note.visible) v.note.position.y = (p.role === 'seeker' ? 1.25 : .95) + Math.sin(performance.now() / 120) * .1;
   }
@@ -1915,9 +1957,13 @@ function update(dt) {
   // 鏡頭
   const myV = visuals.get(net.myId);
   const dp = p?.prop >= 0 ? propObjs[p.prop]?.userData : null;
-  const dist = dp ? Math.max(2.3, dp.height * 2.6) : 2.8;
+  let dist = dp ? Math.max(2.3, dp.height * 2.6) : 2.8;
   const focusY = local.mounted ? local.y : ((dp ? Math.max(.45, dp.height * .75) : (p?.role === 'seeker' ? .62 : .42)) + local.y);
   const focus = new THREE.Vector3(local.x, focusY, local.z);
+  const tv = specFollowing() ? visuals.get(spec.target) : null;
+  if (tv) { const tp = tv.p, tdp = tp?.prop >= 0 ? propObjs[tp.prop]?.userData : null; // 跟隨觀戰：鏡頭繞著被看的人
+    dist = tdp ? Math.max(2.3, tdp.height * 2.6) : 2.8;
+    focus.set(tv.root.position.x, tp?.mnt ? tv.root.position.y : tv.root.position.y + (tdp ? Math.max(.45, tdp.height * .75) : (tp?.role === 'seeker' ? .62 : .42)), tv.root.position.z); }
   if (!p) { focus.set(0, 0, 0); }
   const dir = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch));
   let d = p ? dist : 22;
@@ -2230,6 +2276,7 @@ function pickAt(cx, cy) {
 }
 function onTap(cx, cy) {
   const s = G.s, p = me(); if (!s || !p) return;
+  if (specFollowing()) { specNext(1); updateUI(); return; } // 觀戰：點畫面換下一位
   const u = pickAt(cx, cy);
   if (p.role === 'seeker') {
     if (s.phase !== 'seek' || !p.alive) return;
@@ -2263,6 +2310,11 @@ addEventListener('keydown', e => {
     }
   }
   keys[e.code] = true;
+  if (isSpectator()) {
+    if ((e.code === 'KeyV' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); specToggle(); return; }
+    if (spec.mode === 'follow' && !e.repeat && (e.code === 'KeyQ' || e.code === 'ArrowLeft' || e.code === 'KeyA')) { specNext(-1); updateUI(); return; }
+    if (spec.mode === 'follow' && !e.repeat && (e.code === 'KeyE' || e.code === 'ArrowRight' || e.code === 'KeyD')) { specNext(1); updateUI(); return; }
+  }
   if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) doJump(); }
   if (e.code === 'KeyF') doTransform();
   if (e.code === 'KeyT') doTaunt();
@@ -2303,6 +2355,9 @@ renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
   base.addEventListener('pointerup', up); base.addEventListener('pointercancel', up);
 }
 $('tfBtn').addEventListener('click', doTransform);
+$('specPrev')?.addEventListener('click', () => { specNext(-1); updateUI(); });
+$('specNext')?.addEventListener('click', () => { specNext(1); updateUI(); });
+$('specMode')?.addEventListener('click', e => { specToggle(); e.currentTarget.blur(); });
 $('tauntBtn').addEventListener('click', doTaunt);
 $('smashBtn').addEventListener('click', doSmash);
 $('lockBtn').addEventListener('click', toggleLock);
@@ -2437,7 +2492,15 @@ function updateUI() {
   const hiders = s.players.filter(q => q.role === 'hider'); $('alive').textContent = `還躲著：${hiders.filter(q => q.alive).length} / ${hiders.length} 人`;
   const seeker = p?.role === 'seeker';
   const nSk = s.players.filter(q => q.role === 'seeker').length;
-  $('role').textContent = seeker ? (nSk > 1 ? '🕵️ 你是鬼（本局 2 個鬼）' : '🕵️ 你是鬼') : p?.alive ? (p.prop >= 0 ? '🪑 你是躲藏者（已變身）' : '🐣 你是躲藏者') : '👻 你被抓了（觀戰中）';
+  const specOn = isSpectator(), specF = specOn && spec.mode === 'follow';
+  $('role').textContent = seeker ? (nSk > 1 ? '🕵️ 你是鬼（本局 2 個鬼）' : '🕵️ 你是鬼') : p?.alive ? (p.prop >= 0 ? '🪑 你是躲藏者（已變身）' : '🐣 你是躲藏者') : (specOn ? (specF ? '👻 你被抓了・跟隨觀戰中' : '👻 你被抓了・自由飛觀戰中') : '👻 你被抓了（觀戰中）');
+  if ($('specBar')) {
+    $('specBar').classList.toggle('hidden', !specOn); $('hud').classList.toggle('specFollow', specF);
+    const tq = specF ? s.players.find(q => q.id === spec.target) : null;
+    $('specName').textContent = !specF ? '🕊 自由飛' : tq ? `👀 正在看：${tq.role === 'seeker' ? '🕵️' : '🐣'} ${tq.name}` : '沒有可以觀看的玩家';
+    $('specPrev').classList.toggle('hidden', !specF); $('specNext').classList.toggle('hidden', !specF);
+    $('specMode').textContent = specF ? (isTouch ? '🕊 自由飛' : '🕊 自由飛 (V)') : (isTouch ? '🎥 跟隨' : '🎥 跟隨 (V)');
+  }
   $('hud')?.classList.toggle('has2sk', nSk > 1);
   placeHudCenter();
   const blind = seeker && s.phase === 'hide'; $('blind').classList.toggle('hidden', !blind); $('blindT').textContent = Math.ceil(Math.max(0, rem) / 1000);
@@ -2467,14 +2530,15 @@ function updateUI() {
   $('rotBox').classList.toggle('hidden', !(canAct && p?.prop >= 0 && !local.mounted));
   $('lockBtn').textContent = local.lock ? '🔒 鎖定 (R)' : '🔓 跟鏡頭 (R)';
   $('crosshair').classList.toggle('hidden', !canAct);
-  const canGo = canMove() && !blind;
+  const canGo = canMove() && !blind && !specF;
   $('moveBtns').classList.toggle('hidden', !(isTouch && canGo && s.phase !== 'end'));
   $('stamWrap').classList.toggle('hidden', s.phase === 'end');
   $('stamFill').style.width = (local.stam / CFG.STAMINA * 100) + '%';
   $('stamFill').style.background = local.exhausted ? '#ff8fa3' : '#7fe0d8';
   const lastMin = s.phase === 'seek' && rem <= CFG.CHIRP_WINDOW;
   $('hint').textContent = seeker ? (isTouch ? '點畫面發射顏料｜打中假家具就抓到｜破壞可砸碎面前家具｜空白鍵/跳 可上家具｜衝刺會耗體力' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜拖曳轉鏡頭（可抬頭）｜點擊發射顏料（真家具 -10、牆地 -2）｜G 或右鍵點一下破壞面前家具') + (lastMin ? '｜最後 1 分鐘聽聲響找人' : '')
-    : canAct ? (isTouch ? (local.mounted ? '在牆上滑動｜跳下來後往牆跳可再貼上' : '點家具 → 變身｜跳上家具｜衝刺｜噴漆可糊住鬼') : (local.mounted ? 'W/S 上下、A/D 左右沿牆滑動，空白鍵跳下來（往牆跳可再貼牆）' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜F 無限變身｜Q/E 轉家具｜T 噴漆｜Enter 聊天')) + (lastMin ? '｜最後 1 分鐘會發出聲響' : '') : '可以到處看看誰還沒被抓';
+    : canAct ? (isTouch ? (local.mounted ? '在牆上滑動｜跳下來後往牆跳可再貼上' : '點家具 → 變身｜跳上家具｜衝刺｜噴漆可糊住鬼') : (local.mounted ? 'W/S 上下、A/D 左右沿牆滑動，空白鍵跳下來（往牆跳可再貼牆）' : 'WASD 走｜Shift 衝刺｜空白鍵跳｜F 無限變身｜Q/E 轉家具｜T 噴漆｜Enter 聊天')) + (lastMin ? '｜最後 1 分鐘會發出聲響' : '') : specF ? (isTouch ? '觀戰中｜◀ ▶ 換人｜拖曳轉鏡頭｜發光的家具＝還躲著的人' : '觀戰中｜Q/E、←/→ 或點畫面換人｜V/Tab 自由飛｜發光的家具＝還躲著的人')
+    : specOn ? (isTouch ? '自由飛觀戰｜搖桿移動｜按「跟隨」回到跟隨｜發光的家具＝還躲著的人' : '自由飛觀戰｜WASD 移動｜V/Tab 回到跟隨｜發光的家具＝還躲著的人') : '可以到處看看誰還沒被抓';
   const end = s.phase === 'end'; $('endBox').classList.toggle('hidden', !end);
   if (end) { const win = (s.winner === 'seeker') === seeker; $('endTitle').textContent = (s.winner === 'seeker' ? '🕵️ 鬼贏了！' : '🐣 躲藏者贏了！') + (p ? (win ? ' 你贏了 🎉' : ' 下次加油') : '');
     $('endSub').textContent = s.reason + '（稍後回到大廳）'; }
@@ -2642,6 +2706,12 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   setTimes(hideS, seekS) { send({ t: 'times', hide: hideS, seek: seekS }); },
   tryTransform(id) { send({ t: 'tf', id }); },
   doSmash, smashCdLeft, smashFacing,
+  get spec() { return { on: isSpectator(), mode: spec.mode, target: spec.target }; }, specNext(d) { specNext(d); updateUI(); }, specToggle,
+  hullVisible: id => { const v = visuals.get(id); return !!(v?.hull && visibleChain(v.hull)); },
+  specTagVisible: id => { const v = visuals.get(id); return !!(v?.specTag && visibleChain(v.specTag)); },
+  visibleHullCount() { let n = 0; scene.traverse(o => { if (o.isMesh && o.userData.hull && visibleChain(o)) n++; }); return n; },
+  visibleSpecTagCount() { let n = 0; scene.traverse(o => { if (o.isSprite && o.userData.specTag && visibleChain(o)) n++; }); return n; },
+  camPos: () => [camera.position.x, camera.position.y, camera.position.z],
   isSmashed: i => !!(G.s?.smashed || []).includes(i) || !!propObjs[i]?.userData.smashed,
   smashedIds: () => [...(G.s?.smashed || [])],
   debrisCount: () => debrisPieces.length,
