@@ -2833,7 +2833,7 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   resetDice() { if (Q.get('net') === 'local') send({ t: 'testdicereset' }); },
   addTestPlayers(list) { if (Q.get('net') === 'local') send({ t: 'testadd', list }); },
   hostRoll(ids) { if (Q.get('net') === 'local') send({ t: 'testhostroll', ids }); },
-  diceTray: { get ok() { return !!tray; }, list: () => tray ? tray.list() : [], rolling: () => !!tray?.rolling(), frames: () => tray?.frames || 0, sounds: () => diceSndN, stat: () => ({ ...diceStat }), get tn() { return trayTn; }, planLen: () => tray?.planLen() || 0, planFrame: () => tray?.planFrame() || 0, trace: () => tray ? tray.trace.slice() : [], speed(x) { if (tray && Q.get('net') === 'local') tray.speed = x; }, projected: () => tray?.projected(), fov: () => tray?.fov, snap: () => tray?.snap() }, get muted() { return muted; },
+  diceTray: { get ok() { return !!tray; }, list: () => tray ? tray.list() : [], rolling: () => !!tray?.rolling(), frames: () => tray?.frames || 0, sounds: () => diceSndN, stat: () => ({ ...diceStat }), get tn() { return trayTn; }, planLen: () => tray?.planLen() || 0, planFrame: () => tray?.planFrame() || 0, trace: () => tray ? tray.trace.slice() : [], speed(x) { if (tray && Q.get('net') === 'local') tray.speed = x; }, projected: () => tray?.projected(), tagSize: () => tray?.tagSize(), fov: () => tray?.fov, snap: () => tray?.snap() }, get muted() { return muted; },
   isTyping, sbFetchRooms, sbDeleteRoom,
   labelVisible: id => !!visuals.get(id)?.label?.visible,
   disguiseHasLight: id => { const d = visuals.get(id)?.disguise; if (!d) return false; let ok = false; d.traverse(o => { if (o.isLight || o.isSprite) ok = true; }); return ok; },

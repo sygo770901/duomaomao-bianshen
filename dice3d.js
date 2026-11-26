@@ -120,12 +120,17 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
     faceCache.set(color, mats); return mats;
   }
   const dieGeo = new THREE.BoxGeometry(1, 1, 1);
-  const TAG_W = 1.85, TAG_H = .46;
-  function makeTag() { const cv = document.createElement('canvas'); cv.width = 320; cv.height = 80; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  const TAG_W = 3.7, TAG_H = .92; // v15：約為前一版的 2 倍，字要清楚看得見
+  const TAG_CW = 640, TAG_CH = 160;
+  function makeTag() { const cv = document.createElement('canvas'); cv.width = TAG_CW; cv.height = TAG_CH; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(TAG_W, TAG_H, 1); s.renderOrder = 5; s.userData = { cv, t, key: '' }; return s; }
   function drawTag(s, text, bg, fg = '#fff') { if (s.userData.key === text + bg) return; s.userData.key = text + bg; const { cv, t } = s.userData, x = cv.getContext('2d');
-    x.clearRect(0, 0, 320, 80); x.font = 'bold 30px sans-serif'; const w = Math.min(312, x.measureText(text).width + 28);
-    x.fillStyle = bg; x.beginPath(); x.roundRect(160 - w / 2, 10, w, 60, 22); x.fill(); x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 160, 42, 300); t.needsUpdate = true; }
+    x.clearRect(0, 0, TAG_CW, TAG_CH); x.font = 'bold 64px sans-serif'; const w = Math.min(TAG_CW - 16, x.measureText(text).width + 56);
+    x.fillStyle = bg; x.beginPath(); x.roundRect(TAG_CW / 2 - w / 2, 8, w, 144, 48); x.fill();
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineWidth = 8; x.strokeStyle = 'rgba(0,0,0,.35)'; x.strokeText(text, TAG_CW / 2, 80, TAG_CW - 40);
+    x.fillStyle = fg; x.fillText(text, TAG_CW / 2, 80, TAG_CW - 40); t.needsUpdate = true;
+    s.userData.pill = Math.min(1, w / TAG_CW); }
   const ringGeo = new THREE.RingGeometry(.78, 1.0, 40); ringGeo.rotateX(-Math.PI / 2);
 
   const dice = new Map(); // id → { body, mesh, inner, tag, ring, n, name, color, settled, pre }
@@ -134,7 +139,7 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
   const FIT_PTS = []; for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) for (const y of [0, .6]) FIT_PTS.push(new THREE.Vector3(x, y, z));
   for (const x of [-TX + .5, TX - .5]) {
     FIT_PTS.push(new THREE.Vector3(x, 1.95, -TZ + .5), new THREE.Vector3(x, 1.95, TZ - .5));
-    FIT_PTS.push(new THREE.Vector3(x, 2.7, -TZ + .5), new THREE.Vector3(x, 2.7, TZ - .5)); // 名牌在骰子上方，鏡頭要留空
+    FIT_PTS.push(new THREE.Vector3(x, 2.7, -TZ + .5), new THREE.Vector3(x, 2.7, TZ - .5)); // 名牌在骰子上方，鏡頭略留空，但不為了名牌把整張桌拉得很小
   }
   for (const x of [-3.6, 3.6]) FIT_PTS.push(new THREE.Vector3(x, 3.4, .9)); // 剛丟出去、在空中的骰子
   const _fp = new THREE.Vector3();
@@ -174,51 +179,86 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
     b.x = [a[0], a[1], a[2]]; b.q = [a[3], a[4], a[5], a[6]]; b.v = [a[7], a[8], a[9]]; b.w = [a[10], a[11], a[12]]; }); }
 
 
-  const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _np = new THREE.Vector3();
-  function layoutTags() { // 名牌沿著鏡頭「上」放在骰子外頭，再左右推開，避免蓋住骰面或互相疊在一起
-    camera.updateMatrixWorld(true);
+  const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _np = new THREE.Vector3(), _p0 = new THREE.Vector3(), _p1 = new THREE.Vector3();
+  function layoutTags(full = true) { // 以畫面座標把名牌放在骰子上方或旁邊：固定像素大小清楚可讀，不超出畫布、不蓋住骰子或彼此
+    camera.updateMatrixWorld(true); camera.updateProjectionMatrix();
     _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
     _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
     const list = [...dice.values()].filter(d => d.body);
-    const hw = TAG_W * .5, hh = TAG_H * .5, pad = .1;
-    for (const d of list) {
-      d.tag.scale.set(TAG_W, TAG_H, 1);
-      const b = d.body, sc = d.mesh.scale.x || 1, dieR = .5 * Math.sqrt(3) * sc;
-      const dist = dieR + hh + .28;
-      d.tag.position.set(b.x[0] + _up.x * dist, b.x[1] + _up.y * dist, b.x[2] + _up.z * dist);
-    }
-    const axisDot = (p, q, ax) => (p.x - q[0]) * ax.x + (p.y - q[1]) * ax.y + (p.z - q[2]) * ax.z;
-    for (let it = 0; it < 10; it++) {
+    const cw = canvas.clientWidth || 1, ch = canvas.clientHeight || 1;
+    const targetH = Math.max(36, Math.min(40, ch * 0.24));
+    const yMin = (ndcH) => -1 + ndcH * .5 + .03, yMax = (ndcH) => 1 - ndcH * .5 - .03;
+    const xMin = (ndcW) => -1 + ndcW * .5 + .03, xMax = (ndcW) => 1 - ndcW * .5 - .03;
+    const proj = (x, y, z) => { _np.set(x, y, z).project(camera); return [_np.x, _np.y, _np.z]; };
+    const items = list.map(d => {
+      const b = d.body, sc = d.mesh.scale.x || 1, dieR = .5 * sc;
+      const c = proj(b.x[0], b.x[1], b.x[2]);
+      const u = proj(b.x[0] + _up.x * dieR, b.x[1] + _up.y * dieR, b.x[2] + _up.z * dieR);
+      const r = proj(b.x[0] + _right.x * dieR, b.x[1] + _right.y * dieR, b.x[2] + _right.z * dieR);
+      const dieHh = Math.max(Math.abs(u[1] - c[1]), .02), dieHw = Math.max(Math.abs(r[0] - c[0]), .02);
+      _p0.set(b.x[0], b.x[1], b.x[2]).project(camera);
+      _p1.set(b.x[0], b.x[1], b.x[2]).addScaledVector(_up, 1).project(camera);
+      const pxPer = Math.max(.001, Math.abs(_p1.y - _p0.y) * .5 * ch);
+      const frac = Math.max(.55, d.tag.userData.pill || .7);
+      const worldH = targetH / pxPer, worldW = worldH * (TAG_W / TAG_H); // 整張貼圖一起縮放，字才不會被左右壓扁
+      const ndcH = 2 * targetH / ch, ndcW = 2 * (targetH * (TAG_W / TAG_H) * frac) / cw; // 重疊只用看得見的藥丸寬度
+      const hhN = ndcH * .5, hwN = ndcW * .5, padN = 2 * 4 / ch;
+      const above = c[1] + dieHh + hhN + padN;
+      let x, y;
+      if (above <= yMax(ndcH)) { x = c[0]; y = above; }
+      else {
+        const left = c[0] - dieHw - hwN - padN, right = c[0] + dieHw + hwN + padN;
+        x = (Math.abs(left) < Math.abs(right) && left >= xMin(ndcW)) || right > xMax(ndcW) ? left : right;
+        y = c[1];
+      }
+      return { d, c, z: c[2], dieHh, dieHw, worldW, worldH, ndcW, ndcH, hwN, hhN, padN, x, y };
+    });
+    const clamp = t => { t.x = Math.min(xMax(t.ndcW), Math.max(xMin(t.ndcW), t.x)); t.y = Math.min(yMax(t.ndcH), Math.max(yMin(t.ndcH), t.y)); };
+    const overlapXY = (a, b, ox, oy) => ox > 0 && oy > 0;
+    const sep = () => {
       let moved = false;
-      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-        const a = list[i].tag.position, b = list[j].tag.position;
-        const dx = (b.x - a.x) * _right.x + (b.y - a.y) * _right.y + (b.z - a.z) * _right.z;
-        const dy = (b.x - a.x) * _up.x + (b.y - a.y) * _up.y + (b.z - a.z) * _up.z;
-        const ox = 2 * hw + pad - Math.abs(dx), oy = 2 * hh + pad - Math.abs(dy);
-        if (ox > 0 && oy > 0) {
-          if (ox <= oy) {
-            const s = (dx === 0 ? 1 : Math.sign(dx)) * ox * .52;
-            a.x -= _right.x * s; a.y -= _right.y * s; a.z -= _right.z * s;
-            b.x += _right.x * s; b.y += _right.y * s; b.z += _right.z * s;
-          } else {
-            const s = oy * .52, hi = dy >= 0 ? b : a;
-            hi.x += _up.x * s; hi.y += _up.y * s; hi.z += _up.z * s;
-          }
-          moved = true;
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        const dx = b.x - a.x, dy = b.y - a.y, pad = Math.max(a.padN, b.padN);
+        const ox = (a.ndcW + b.ndcW) * .5 + pad - Math.abs(dx), oy = (a.ndcH + b.ndcH) * .5 + pad - Math.abs(dy);
+        if (!overlapXY(a, b, ox, oy)) continue;
+        const roomUp = Math.max(a.y, b.y) + oy * .6 <= Math.min(yMax(a.ndcH), yMax(b.ndcH));
+        if (oy < ox && roomUp) {
+          const s = oy * .55; if (dy >= 0) b.y += s; else a.y += s;
+        } else {
+          const s = (dx === 0 ? (a.x <= b.x ? 1 : -1) : Math.sign(dx)) * ox * .55;
+          a.x -= s; b.x += s;
         }
+        moved = true;
       }
-      if (!moved) break;
-    }
-    // 若推完仍跟任何一顆骰子的畫面範圍重疊，再往鏡頭上方挪
-    for (const d of list) {
-      const t = d.tag.position;
-      for (const o of list) {
-        const die = o.body, sc = o.mesh.scale.x || 1, dieH = .58 * sc;
-        const dx = axisDot(t, die.x, _right), dy = axisDot(t, die.x, _up);
-        const ox = hw + dieH + .08 - Math.abs(dx), oy = hh + dieH + .08 - Math.abs(dy);
-        if (ox > 0 && oy > 0) { const s = oy + .04; t.x += _up.x * s; t.y += _up.y * s; t.z += _up.z * s; }
+      return moved;
+    };
+    const clearDie = () => {
+      let moved = false;
+      for (const t of items) for (const o of items) {
+        const dx = t.x - o.c[0], dy = t.y - o.c[1];
+        const ox = t.hwN + o.dieHw + t.padN - Math.abs(dx), oy = t.hhN + o.dieHh + t.padN - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;
+        const canUp = t.y + oy + .01 <= yMax(t.ndcH);
+        if (canUp && (oy <= ox || t.d === o.d)) t.y += oy + .01;
+        else t.x += (dx === 0 ? 1 : Math.sign(dx)) * (ox + .01);
+        moved = true;
       }
+      return moved;
+    };
+    for (const t of items) clamp(t);
+    if (full) {
+      for (let it = 0; it < 12; it++) { const m = sep() | clearDie(); for (const t of items) clamp(t); if (!m) break; }
     }
+    let avgW = 0, avgH = 0;
+    for (const t of items) {
+      t.d.tag.scale.set(t.worldW, t.worldH, 1);
+      _np.set(t.x, t.y, t.z).unproject(camera);
+      t.d.tag.position.copy(_np);
+      avgW += t.worldW; avgH += t.worldH;
+    }
+    const n = items.length || 1;
+    api._tagScale = { w: avgW / n, h: avgH / n, targetPx: targetH };
   }
   const api = {
     throwDie(id, info) { api.throwMany([[id, info]]); }, // info: { n, color, name, seed, slot }
@@ -263,7 +303,7 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
         d.ring.visible = d.settled && (isSk || tied); d.ring.position.set(b.x[0], .02, b.x[2]); d.ring.material.color.set(isSk ? '#ff4f8b' : '#ff9f1c');
         if (d.ring.visible) { const s = 1 + .12 * Math.sin(t * 5); d.ring.scale.set(s, 1, s); dirty = true; }
         d.mesh.scale.setScalar(isSk && d.settled ? 1.12 : 1); }
-      layoutTags();
+      layoutTags(!plan);
       if (dirty && shown && !lost) { renderer.render(scene, camera); dirty = false; api.frames++; }
     },
     projected() { // 測試用：骰子／名牌中心與畫面矩形（NDC，-1..1 在畫面內）
@@ -284,12 +324,18 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
       for (const d of dice.values()) { if (!d.body) continue; const b = d.body, sc = d.mesh.scale.x || 1;
         const p1 = ndc(_np.set(b.x[0], b.x[1], b.x[2]));
         const tp = d.tag.position, p2 = ndc(_np.set(tp.x, tp.y, tp.z));
-        const dieR = rectFrom(b.x[0], b.x[1], b.x[2], .55 * sc, .55 * sc);
-        const tagR = rectFrom(tp.x, tp.y, tp.z, TAG_W * .5, TAG_H * .5);
-        out.dice.push({ id: d.id, p: p1, tag: p2, dieRect: dieR, tagRect: tagR, overlapDie: overlap(dieR, tagR, .01) }); }
+        const frac = Math.max(.55, d.tag.userData.pill || .7), vfrac = 144 / 160;
+        const tw = d.tag.scale.x * frac, th = d.tag.scale.y * vfrac;
+        const dieR = rectFrom(b.x[0], b.x[1], b.x[2], .5 * sc, .5 * sc);
+        const tagR = rectFrom(tp.x, tp.y, tp.z, tw * .5, th * .5);
+        const cw = canvas.clientWidth || 1, ch = canvas.clientHeight || 1;
+        const tagPx = { w: (tagR.x2 - tagR.x1) / 2 * cw, h: (tagR.y2 - tagR.y1) / 2 * ch };
+        out.dice.push({ id: d.id, p: p1, tag: p2, dieRect: dieR, tagRect: tagR, tagPx, overlapDie: overlap(dieR, tagR, .01) }); }
       out.tagOverlap = out.dice.some((a, i) => out.dice.some((b, j) => j > i && overlap(a.tagRect, b.tagRect, .01)));
+      out.tagSize = api._tagScale || { w: TAG_W, h: TAG_H };
       for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) { out.corners.push(ndc(_np.set(x, .55, z))); }
       return out; },
+    tagSize() { return api._tagScale || { w: TAG_W, h: TAG_H }; },
     snap() { // 測試用：馬上重畫一次並讀回像素（粗略統計＋32×18 亮度格，用來比對前後兩格有沒有在動）
       if (api.resize() === false || lost) return null; renderer.render(scene, camera); const gl = renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4);
       gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); let felt = 0, col = 0, s = 0, s2 = 0; const GW = 32, GH = 18, grid = new Array(GW * GH).fill(0), cnt = new Array(GW * GH).fill(0); const n = w * h;
