@@ -139,7 +139,7 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
   const FIT_PTS = []; for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) for (const y of [0, .6]) FIT_PTS.push(new THREE.Vector3(x, y, z));
   for (const x of [-TX + .5, TX - .5]) {
     FIT_PTS.push(new THREE.Vector3(x, 1.95, -TZ + .5), new THREE.Vector3(x, 1.95, TZ - .5));
-    FIT_PTS.push(new THREE.Vector3(x, 2.7, -TZ + .5), new THREE.Vector3(x, 2.7, TZ - .5)); // 名牌在骰子上方，鏡頭略留空，但不為了名牌把整張桌拉得很小
+    FIT_PTS.push(new THREE.Vector3(x, 2.35, -TZ + .5), new THREE.Vector3(x, 2.35, TZ - .5)); // 名牌在畫面座標擺，鏡頭只要略留空，桌面盡量填滿
   }
   for (const x of [-3.6, 3.6]) FIT_PTS.push(new THREE.Vector3(x, 3.4, .9)); // 剛丟出去、在空中的骰子
   const _fp = new THREE.Vector3();
@@ -147,7 +147,7 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
   function fitCamera() { // 視角固定，往後拉到所有點都在畫面內（不會因為比例奇怪就整張桌變很小或被切掉）
     camera.fov = 36;
     for (let dist = 6; dist <= 40; dist += .2) { camera.position.copy(CAM_AT).addScaledVector(CAM_DIR, dist); camera.lookAt(CAM_AT); camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
-      if (FIT_PTS.every(pt => { _fp.copy(pt).project(camera); return Math.abs(_fp.x) <= .96 && Math.abs(_fp.y) <= .93; })) break; }
+      if (FIT_PTS.every(pt => { _fp.copy(pt).project(camera); return Math.abs(_fp.x) <= .98 && Math.abs(_fp.y) <= .97; })) break; }
     api.fov = camera.fov; api.camDist = camera.position.distanceTo(CAM_AT);
   }
   const quat = new THREE.Quaternion();
@@ -186,7 +186,7 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
     _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
     const list = [...dice.values()].filter(d => d.body);
     const cw = canvas.clientWidth || 1, ch = canvas.clientHeight || 1;
-    const targetH = Math.max(36, Math.min(40, ch * 0.24));
+    const targetH = Math.max(36, Math.min(ch * 0.11, 80)); // 隨骰桌變高一起放大，仍保持可讀、可排開
     const yMin = (ndcH) => -1 + ndcH * .5 + .03, yMax = (ndcH) => 1 - ndcH * .5 - .03;
     const xMin = (ndcW) => -1 + ndcW * .5 + .03, xMax = (ndcW) => 1 - ndcW * .5 - .03;
     const proj = (x, y, z) => { _np.set(x, y, z).project(camera); return [_np.x, _np.y, _np.z]; };

@@ -89,8 +89,9 @@ body.touch #btns{bottom:max(150px,env(safe-area-inset-bottom))}
 .lobbySide{width:min(380px,100%);display:flex;flex-direction:column;gap:10px;min-width:0;align-self:stretch}
 .chatCard{width:min(380px,100%);text-align:left;padding:14px 14px 12px;display:flex;flex-direction:column}
 /* 桌面並排：右欄（骰桌在上、聊天在下）總高與左側房號設定區完全一樣，聊天吃剩下部份 */
-#lobby .lobbySide .chatCard{flex:1 1 auto;min-height:0;height:auto;max-height:none;width:100%;align-self:stretch}
-#lobby .lobbySide .chatCard #chatLog{flex:1 1 auto;min-height:0;max-height:none}
+#lobby .lobbySide .chatCard{flex:1 1 auto;min-height:168px;height:auto;max-height:none;width:100%;align-self:stretch}
+#lobby .lobbySide .chatCard #chatLog{flex:1 1 auto;min-height:4.2em;max-height:none}
+#lobby .lobbySide{min-height:calc(clamp(375px,55vh,575px) + 10px + 168px)}
 #lobby .chatCard{height:auto;max-height:none}
 #lobby .chatCard #chatLog{flex:1 1 auto;min-height:120px;max-height:none}
 #pList li{flex-wrap:wrap}
@@ -221,18 +222,23 @@ body.touch #specBar{bottom:max(18px,env(safe-area-inset-bottom))}
 @media (max-width:560px){body.touch #specBar{bottom:max(232px,calc(env(safe-area-inset-bottom) + 232px));gap:6px}#specName{font-size:14px;padding:8px 10px;max-width:46vw}#specBar button{font-size:16px;padding:9px 11px}}
 .helpList{margin:6px 0 0;padding-left:18px;line-height:1.45}.helpList li{margin:3px 0}
 
-/* v13 / v15 3D 擲骰桌：大廳在右欄、聊天上方 */
+/* v16 3D 擲骰桌：大廳右欄加高到至少舊版 2.5 倍，佔滿右欄寬度 */
 #diceTray{position:relative;width:100%;height:clamp(170px,46vw,240px);margin:8px 0 2px;border-radius:14px;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#fbf1e3,#ecd6ba)}
-#lobby .lobbySide #diceTray{flex:0 0 clamp(150px,22vh,230px);height:clamp(150px,22vh,230px);margin:0;box-shadow:0 8px 0 #e8c9a0,0 12px 24px rgba(0,0,0,.12);border-radius:22px}
+#lobby .lobbySide #diceTray{flex:0 0 clamp(375px,55vh,575px);height:clamp(375px,55vh,575px);width:100%;margin:0;box-shadow:0 8px 0 #e8c9a0,0 12px 24px rgba(0,0,0,.12);border-radius:22px}
 #diceTray.hidden{display:none}
 #diceCanvas{display:block;width:100%;height:100%}
 #muteBtn{position:absolute;top:6px;right:6px;min-width:0;padding:4px 8px;font-size:16px;line-height:1;border-radius:10px;background:rgba(255,250,242,.85);box-shadow:none;z-index:1}
 @media (max-width:820px){
   .lobbyLayout{flex-direction:column;align-items:stretch;width:min(420px,100%)}
   .lobbyMain,.lobbySide,.chatCard{width:100%}
-  #lobby .lobbySide #diceTray{flex:none;height:clamp(160px,42vw,220px)}
-  #lobby .lobbySide .chatCard{flex:none;min-height:200px;height:auto}
+  #lobby .lobbySide{min-height:0}
+  #lobby .lobbySide #diceTray{flex:none;width:100%;height:clamp(400px,105vw,520px)}
+  #lobby .lobbySide .chatCard{flex:none;min-height:180px;height:auto}
   #lobby .lobbySide .chatCard #chatLog{min-height:120px}
+}
+@media (max-height:600px){
+  #lobby .lobbySide{min-height:0}
+  #lobby .lobbySide #diceTray{flex-basis:min(375px,calc(100vh - 56px));height:min(375px,calc(100vh - 56px))}
 }
 /* v13：窄手機上時間欄不要超出卡片 */
 .timeField{min-width:0}
