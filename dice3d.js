@@ -136,18 +136,30 @@ export function createDiceTable({ THREE, canvas, low, onSound }) {
   const dice = new Map(); // id → { body, mesh, inner, tag, ring, n, name, color, settled, pre }
   let plan = null, frame = 0, acc = 0, lastTick = 0, lastW = 0, lastH = 0, status = { seekers: [], tied: [], done: false }, dirty = true;
   // 依畫布比例找最小的視角，讓整張桌子（含木框、骰子名牌）都在畫面內
-  const FIT_PTS = []; for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) for (const y of [0, .6]) FIT_PTS.push(new THREE.Vector3(x, y, z));
-  for (const x of [-TX + .5, TX - .5]) {
-    FIT_PTS.push(new THREE.Vector3(x, 1.95, -TZ + .5), new THREE.Vector3(x, 1.95, TZ - .5));
-    FIT_PTS.push(new THREE.Vector3(x, 2.35, -TZ + .5), new THREE.Vector3(x, 2.35, TZ - .5)); // 名牌在畫面座標擺，鏡頭只要略留空，桌面盡量填滿
-  }
-  for (const x of [-3.6, 3.6]) FIT_PTS.push(new THREE.Vector3(x, 3.4, .9)); // 剛丟出去、在空中的骰子
-  const _fp = new THREE.Vector3();
+  const FIT_PTS = []; for (const x of [-TX - .45, TX + .45]) for (const z of [-TZ - .45, TZ + .45]) for (const y of [0, .7]) FIT_PTS.push(new THREE.Vector3(x, y, z));
+  // 名牌在畫面座標擺，鏡頭只依桌面取景，上方留白交給置中／下移
+  const _fp = new THREE.Vector3(), _camR = new THREE.Vector3(), _camU = new THREE.Vector3(), _camP = new THREE.Vector3();
   const CAM_DIR = new THREE.Vector3(0, 8.4, 5.15).normalize(), CAM_AT = new THREE.Vector3(0, .35, .25);
-  function fitCamera() { // 視角固定，往後拉到所有點都在畫面內（不會因為比例奇怪就整張桌變很小或被切掉）
+  function fitCamera() { // 視角固定，往後拉到桌面＋名牌剛好填滿畫面，再置中，去掉上下大塊留白
     camera.fov = 36;
-    for (let dist = 6; dist <= 40; dist += .2) { camera.position.copy(CAM_AT).addScaledVector(CAM_DIR, dist); camera.lookAt(CAM_AT); camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
-      if (FIT_PTS.every(pt => { _fp.copy(pt).project(camera); return Math.abs(_fp.x) <= .98 && Math.abs(_fp.y) <= .97; })) break; }
+    let dist = 40;
+    for (let d = 6; d <= 40; d += .15) {
+      camera.position.copy(CAM_AT).addScaledVector(CAM_DIR, d); camera.lookAt(CAM_AT);
+      camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+      if (FIT_PTS.every(pt => { _fp.copy(pt).project(camera); return Math.abs(_fp.x) <= .97 && _fp.y <= .72 && _fp.y >= -.94; })) { dist = d; break; }
+    }
+    camera.position.copy(CAM_AT).addScaledVector(CAM_DIR, dist); camera.lookAt(CAM_AT);
+    camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+    let x1 = 1, x2 = -1, y1 = 1, y2 = -1;
+    for (const pt of FIT_PTS) { _fp.copy(pt).project(camera); if (_fp.x < x1) x1 = _fp.x; if (_fp.x > x2) x2 = _fp.x; if (_fp.y < y1) y1 = _fp.y; if (_fp.y > y2) y2 = _fp.y; }
+    _camR.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    _camU.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    const worldH = 2 * Math.tan(camera.fov * Math.PI / 360) * dist, worldW = worldH * camera.aspect;
+    // 水平置中；垂直把桌面上緣放到 0.70，上頭留給名牌
+    const panX = ((x1 + x2) / 2) * worldW / 2, panY = (y2 - .70) * worldH / 2;
+    _camP.copy(_camR).multiplyScalar(panX).addScaledVector(_camU, panY);
+    camera.position.add(_camP); camera.lookAt(_fp.copy(CAM_AT).add(_camP));
+    camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
     api.fov = camera.fov; api.camDist = camera.position.distanceTo(CAM_AT);
   }
   const quat = new THREE.Quaternion();
