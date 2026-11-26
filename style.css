@@ -205,3 +205,12 @@ body.touch #specBar{bottom:max(18px,env(safe-area-inset-bottom))}
 #hud.specFollow #joy{display:none!important}
 @media (max-width:560px){body.touch #specBar{bottom:max(232px,calc(env(safe-area-inset-bottom) + 232px));gap:6px}#specName{font-size:14px;padding:8px 10px;max-width:46vw}#specBar button{font-size:16px;padding:9px 11px}}
 .helpList{margin:6px 0 0;padding-left:18px;line-height:1.45}.helpList li{margin:3px 0}
+
+/* v13 3D 擲骰桌 */
+#diceTray{position:relative;width:100%;height:clamp(170px,46vw,240px);margin:8px 0 2px;border-radius:14px;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#fbf1e3,#ecd6ba)}
+#diceTray.hidden{display:none}
+#diceCanvas{display:block;width:100%;height:100%}
+#muteBtn{position:absolute;top:6px;right:6px;min-width:0;padding:4px 8px;font-size:16px;line-height:1;border-radius:10px;background:rgba(255,250,242,.85);box-shadow:none}
+/* v13：窄手機上時間欄不要超出卡片 */
+.timeField{min-width:0}
+@media (max-width:430px){.timeField{gap:3px;padding:6px 4px}.timeField b{min-width:3.6em;font-size:13px}.timeBtn{min-width:30px}}

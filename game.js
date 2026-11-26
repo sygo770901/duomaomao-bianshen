@@ -6,6 +6,7 @@ import { LocalPeer } from './localnet.js';
 import * as OFFICE from './office.js';
 import * as LUCKY from './lucky.js';
 import { buildCompound } from './compound.js';
+import { createDiceTable } from './dice3d.js';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -1110,7 +1111,7 @@ function hostDoRoll(id) {
   const q = (H.nextRolls || {})[id];
   const n = (Array.isArray(q) && q.length) ? q.shift() : (1 + Math.floor(Math.random() * 6));
   p.roll = Math.max(1, Math.min(6, +n || 1)); p.needReroll = 0;
-  broadcast({ t: 'ev', k: 'roll', id, name: p.name, avatar: p.avatar, n: p.roll });
+  broadcast({ t: 'ev', k: 'roll', id, name: p.name, avatar: p.avatar, n: p.roll, seed: (Math.random() * 2147483647) | 0 }); // seed：大家用同一組物理軌跡
   hostSysChat(`🎲 ${p.avatar || ''} ${p.name} 擲出了 ${p.roll} 點`.trim());
   hostResolveDice();
 }
@@ -1473,7 +1474,7 @@ function onHostMsg(m) {
     if (m.k === 'paintmiss') { endProjectile(m.sid); }
     if (m.k === 'seek') toast('👀 鬼出動了！');
     if (m.k === 'left') toast(`${m.name} 離開了`);
-    if (m.k === 'roll') { evLog.push(m); showDiePop(m); }
+    if (m.k === 'roll') { evLog.push(m); if (!diceThrow(m)) showDiePop(m); }
     if (m.k === 'dicetie') { evLog.push(m); toast(`平手！${m.names} 都是 ${m.n} 點，請再擲一次`); }
     if (m.k === 'seekerpick') { evLog.push(m); toast(m.names?.length > 1 ? `👻 這局由 ${m.names.join('、')} 當鬼` : `👻 這局由 ${m.name} 當鬼（擲出 ${m.n} 點）`); }
     if (m.k === 'chirp') {
@@ -2388,6 +2389,52 @@ function showScreen(n) {
   $('chatFeedToggle')?.classList.toggle('hidden', n !== 'game');
   $('chatHide')?.classList.toggle('hidden', n !== 'game');
 }
+// ---------- v13 3D 擲骰桌 ----------
+let tray = null; try { tray = createDiceTable({ THREE, canvas: $('diceCanvas'), low: LOW, onSound: diceSound }); } catch (e) { console.warn('dice table off', e); tray = null; $('diceTray')?.classList.add('hidden'); }
+const diceStat = { thrown: 0, placed: 0 };
+const traySeen = new Map(); // id → 第一次在狀態裡看到點數、但桌上沒有骰子的時間
+function diceInfo(id, n, seed) { const s = G.s, i = s ? s.players.findIndex(q => q.id === id) : 0, q = s?.players[i];
+  return { n, seed, slot: Math.max(0, i), color: q?.color || '#ffd23f', name: ((q?.avatar ? q.avatar + ' ' : '') + (q?.name || '玩家')).trim() }; }
+function diceThrow(m) { if (!tray || $('lobby').classList.contains('hidden')) return false; tray.throwDie(m.id, diceInfo(m.id, m.n, m.seed)); traySeen.delete(m.id); diceStat.thrown++; return true; }
+function syncDiceTray(s) {
+  if (!tray) return; if (s.phase !== 'lobby') { tray.clear(); traySeen.clear(); return; }
+  const ids = new Set(s.players.map(q => q.id)); for (const d of tray.list()) if (!ids.has(d.id)) tray.removeDie(d.id);
+  const now = performance.now();
+  for (const q of s.players) {
+    if (!q.roll) { if (tray.has(q.id)) tray.removeDie(q.id); traySeen.delete(q.id); continue; }
+    if (tray.has(q.id) && tray.dieN(q.id) === q.roll) { traySeen.delete(q.id); continue; }
+    if (!traySeen.has(q.id)) traySeen.set(q.id, now); // 等一下擲骰事件，沒等到才直接放好
+    else if (now - traySeen.get(q.id) > 2500) { tray.placeDie(q.id, diceInfo(q.id, q.roll)); traySeen.delete(q.id); diceStat.placed++; }
+  }
+  const sk = s.dice?.seekers?.length ? s.dice.seekers : (s.dice?.seeker ? [s.dice.seeker] : []);
+  tray.setStatus({ seekers: sk, tied: s.dice?.status === 'tie' ? (s.dice.tied || []) : [], done: s.dice?.status === 'done' });
+}
+let trayWasRolling = false;
+setInterval(() => { if (G.s?.phase !== 'lobby') return; syncDiceTray(G.s); const r = !!tray?.rolling(); if (r !== trayWasRolling) { trayWasRolling = r; updateUI(); } }, 150); // 骰子停了才公布結果文字
+// 骰子音效（WebAudio 即時合成；接在 listener 上，所以靜音鍵一起管）
+let diceNoise = null, diceSndN = 0, diceSndLast = 0, muted = localStorage.getItem('ph-mute') === '1';
+function applyMute() { listener.setMasterVolume(muted ? 0 : 1); if ($('muteBtn')) { $('muteBtn').textContent = muted ? '🔇' : '🔊'; $('muteBtn').title = muted ? '音效已關閉' : '音效開啟中'; } }
+applyMute();
+$('muteBtn')?.addEventListener('click', () => { muted = !muted; localStorage.setItem('ph-mute', muted ? '1' : '0'); applyMute(); });
+addEventListener('pointerdown', () => { if (listener.context.state === 'suspended') listener.context.resume().catch(() => { }); }, { capture: true });
+function diceSound(e) {
+  diceSndN++; if (muted) return;
+  const ctx = listener.context; if (ctx.state !== 'running') return;
+  const now = ctx.currentTime; if (e.k !== 'settle' && now - diceSndLast < .035) return; diceSndLast = now;
+  if (!diceNoise) { const n = Math.floor(ctx.sampleRate * .25); diceNoise = ctx.createBuffer(1, n, ctx.sampleRate); const d = diceNoise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; }
+  const out = listener.getInput(), vol = Math.min(1, (e.s || 1) / 9);
+  const g = ctx.createGain(); g.connect(out);
+  if (e.first || e.k === 'settle') { // 落桌的悶響
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(e.k === 'settle' ? 140 : 110, now); o.frequency.exponentialRampToValueAtTime(55, now + .16);
+    g.gain.setValueAtTime((e.k === 'settle' ? .12 : .45) * Math.max(.4, vol), now); g.gain.exponentialRampToValueAtTime(.001, now + .2); o.connect(g); o.start(now); o.stop(now + .22);
+  }
+  if (e.k !== 'settle') { // 喀啦聲
+    const src = ctx.createBufferSource(); src.buffer = diceNoise; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.value = e.k === 'die' ? 3200 : e.k === 'wall' ? 1800 : 1200; bp.Q.value = 3.5;
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime(.5 * vol, now); g2.gain.exponentialRampToValueAtTime(.001, now + .07);
+    src.connect(bp); bp.connect(g2); g2.connect(out); src.start(now, Math.random() * .15, .08);
+  }
+}
 function showDiePop(m) {
   const pop = $('diePop'); if (!pop) return;
   // 遊戲中擲骰不會發生；彈窗掛在大廳
@@ -2444,6 +2491,7 @@ function updateUI() {
     const isSk = s.dice?.status === 'done' && skIds.includes(q.id);
     return `<li${isSk ? ' class="isSeeker"' : ''}><span class="av">${esc(q.avatar || '🙂')}</span><span class="dot" style="background:${q.color}"></span><span class="nm">${esc(q.name)}${you}${host}${isSk ? ' 👻' : ''}</span>${rdy}${face ? `<span class="dieFace" title="${q.roll} 點">${face}</span>` : ''}</li>`;
   }).join('');
+  if (s.phase === 'lobby') syncDiceTray(s);
   const allReady = s.players.length >= 2 && s.players.every(q => q.ready);
   const needSk = s.dice?.need || (s.players.length >= 6 ? 2 : 1);
   const diceDone = s.dice?.status === 'done' && ((s.dice.seekers && s.dice.seekers.length === needSk) || (!s.dice.seekers && s.dice.seeker));
@@ -2465,7 +2513,7 @@ function updateUI() {
   const seekerPs = skIds.map(id => s.players.find(q => q.id === id)).filter(Boolean);
   if ($('diceMsg')) {
     const two = needSk >= 2;
-    $('diceMsg').textContent = s.dice?.status === 'tie' ? `平手！${(s.dice.tied || []).map(id => s.players.find(q => q.id === id)?.name).filter(Boolean).join('、')} 點數相同，請再擲一次`
+    $('diceMsg').textContent = tray?.rolling() ? '🎲 骰子滾動中…' : s.dice?.status === 'tie' ? `平手！${(s.dice.tied || []).map(id => s.players.find(q => q.id === id)?.name).filter(Boolean).join('、')} 點數相同，請再擲一次`
       : (diceDone && seekerPs.length ? (seekerPs.length > 1
         ? `👻 這局由 ${seekerPs.map(q => `${q.name}（${q.roll} 點）`).join('、')} 當鬼`
         : `👻 這局由 ${seekerPs[0].name} 當鬼（擲出 ${seekerPs[0].roll} 點）`)
@@ -2647,7 +2695,7 @@ $('timePick')?.addEventListener('click', e => {
 
 // ---------- 主迴圈 ----------
 let ready = false, last = performance.now();
-function loop(t) { const dt = Math.min(.1, (t - last) / 1000); last = t; update(dt); if (G.s && G.s.phase !== 'lobby') updateUI(); renderer.render(scene, camera); requestAnimationFrame(loop); }
+function loop(t) { const dt = Math.min(.1, (t - last) / 1000); last = t; update(dt); if (tray && !$('lobby').classList.contains('hidden')) tray.tick(dt); if (G.s && G.s.phase !== 'lobby') updateUI(); renderer.render(scene, camera); requestAnimationFrame(loop); }
 useMap('home'); buildHouse(); addLights();
 useMap('office'); OFFICE.buildOfficeShell({ THREE, root: ROOT, colliders, wallMeshes, ceilings: houseCeiling, LOW, mergeGeometries });
 useMap('lucky'); LUCKY.buildLuckyShell({ THREE, root: ROOT, colliders, wallMeshes, ceilings: houseCeiling, LOW, mergeGeometries });
@@ -2685,6 +2733,7 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   resetDice() { if (Q.get('net') === 'local') send({ t: 'testdicereset' }); },
   addTestPlayers(list) { if (Q.get('net') === 'local') send({ t: 'testadd', list }); },
   hostRoll(ids) { if (Q.get('net') === 'local') send({ t: 'testhostroll', ids }); },
+  diceTray: { get ok() { return !!tray; }, list: () => tray ? tray.list() : [], rolling: () => !!tray?.rolling(), frames: () => tray?.frames || 0, sounds: () => diceSndN, stat: () => ({ ...diceStat }), planLen: () => tray?.planLen() || 0, trace: () => tray ? tray.trace.slice() : [], speed(x) { if (tray && Q.get('net') === 'local') tray.speed = x; } }, get muted() { return muted; },
   isTyping, sbFetchRooms, sbDeleteRoom,
   labelVisible: id => !!visuals.get(id)?.label?.visible,
   disguiseHasLight: id => { const d = visuals.get(id)?.disguise; if (!d) return false; let ok = false; d.traverse(o => { if (o.isLight || o.isSprite) ok = true; }); return ok; },
