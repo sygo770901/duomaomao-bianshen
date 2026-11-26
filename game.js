@@ -2,11 +2,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js';
-import * as OFFICE from './office.js';
-import * as LUCKY from './lucky.js';
-import { buildCompound } from './compound.js';
-import { createDiceTable } from './dice3d.js';
+import { LocalPeer } from './localnet.js?v=14';
+import * as OFFICE from './office.js?v=14';
+import * as LUCKY from './lucky.js?v=14';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=14';
+import { createDiceTable } from './dice3d.js?v=14';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -610,11 +610,12 @@ function syncPropCols(g) {
     for (let i = 0; i < cols.length; i++) { const w = world[i]; cols[i].x1 = w.x1; cols[i].x2 = w.x2; cols[i].y1 = w.y1; cols[i].y2 = w.y2; cols[i].z1 = w.z1; cols[i].z2 = w.z2; }
   }
 }
+const NO_HF = new Set(); // 需要時可排除個別模型的高度圖校正
 function bakeCompounds() {
   for (const n of Object.keys(modelCache)) {
     const m = modelCache[n]; if (m.cols) continue;
     const g = makeModel(n); g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.updateMatrixWorld(true);
-    try { m.cols = buildCompound(n, g, m.size, THREE); }
+    try { m.cols = buildCompound(n, g, m.size, THREE); if (m.cols && m.cols.length && !NO_HF.has(n)) m.cols = refineWithHeightfield(g, m.cols, m.size, THREE); }
     catch (e) { m.cols = null; }
   }
 }
@@ -1035,7 +1036,7 @@ function hostSeekerNeed() {
 }
 function dicePack() {
   const d = H.dice || {};
-  return { status: d.status || 'idle', seeker: d.seeker || null, seekers: d.seekers || [], tied: d.tied || [], need: d.need || hostSeekerNeed() };
+  return { status: d.status || 'idle', seeker: d.seeker || null, seekers: d.seekers || [], tied: d.tied || [], need: d.need || hostSeekerNeed(), tn: H.throwN || 0, th: H.lastThrow || [] };
 }
 function hostCanStart() {
   if (H.phase !== 'lobby' || H.order.length < 2) return false;
@@ -1086,7 +1087,7 @@ function hostResolveDice() {
       for (const id of g) H.players[id].needReroll = 1;
       H.dice = { status: 'tie', seeker: chosen[0] || null, seekers: chosen, tied: g, need };
       const names = g.map(id => H.players[id].name).join('、');
-      const why = remaining === need ? '請再擲一次' : `還要再選 ${remaining} 個鬼，請再擲一次`;
+      const why = remaining === need ? '房主會重擲平手的人' : `還要再選 ${remaining} 個鬼，房主會重擲平手的人`;
       broadcast({ t: 'ev', k: 'dicetie', names, n: r, tied: g, need: remaining, have: chosen.length });
       hostSysChat(`🎲 平手！${names} 都是 ${r} 點，${why}`);
       return;
@@ -1105,6 +1106,25 @@ function hostReresolveIfNeedChanged() {
     for (const p of Object.values(H.players)) p.needReroll = 0;
     hostResolveDice();
   } else if (H.dice) H.dice.need = need;
+}
+// v14：只有房主擲骰，大家的骰子一起丟（平手時只丟平手的人）
+function hostRollTargets() {
+  if (H.phase !== 'lobby') return [];
+  if (H.dice?.status === 'tie') return (H.dice.tied || []).filter(id => H.players[id] && (H.players[id].needReroll || !H.players[id].roll));
+  return H.order.filter(id => H.players[id] && !H.players[id].roll);
+}
+function hostAllReady() { return H.order.length >= 2 && H.order.every(id => H.players[id]?.ready); }
+function hostRollAll(force) {
+  if (H.phase !== 'lobby' || (!force && !hostAllReady())) return;
+  const ids = hostRollTargets(); if (!ids.length) return;
+  const th = [];
+  for (const id of ids) { const p = H.players[id]; const q = (H.nextRolls || {})[id];
+    const n = (Array.isArray(q) && q.length) ? q.shift() : (1 + Math.floor(Math.random() * 6));
+    p.roll = Math.max(1, Math.min(6, +n || 1)); p.needReroll = 0; th.push([id, p.roll, (Math.random() * 2147483647) | 0]); }
+  H.throwN = (H.throwN || 0) + 1; H.lastThrow = th;
+  broadcast({ t: 'ev', k: 'rollall', tn: H.throwN, th });
+  hostSysChat('🎲 房主幫大家擲骰：' + th.map(([id, n]) => `${H.players[id].avatar || ''}${H.players[id].name} 擲出了 ${n} 點`).join('、'));
+  hostResolveDice();
 }
 function hostDoRoll(id) {
   const p = H.players[id]; if (!hostCanRoll(p)) return;
@@ -1299,7 +1319,7 @@ function hostOnMsg(from, m) {
       if (m.color && COLORS.includes(m.color)) p.color = m.color;
       if (m.avatar && AVATARS.includes(m.avatar)) p.avatar = m.avatar;
     } break;
-    case 'roll': if (H.phase === 'lobby') hostDoRoll(from); break;
+    case 'roll': if (H.phase === 'lobby' && from === net.myId) hostRollAll(false); break; // 只有房主能擲
     case 'map': if (from === net.myId && H.phase === 'lobby' && MAPS[m.id] && m.id !== H.map) {
       H.map = m.id; H.moved = {}; const [lx, lz] = MAPS[m.id].lobbyAt;
       for (const q of Object.values(H.players)) { q.x = lx; q.z = lz; q.sx = lx; q.sz = lz; }
@@ -1328,8 +1348,7 @@ function hostOnMsg(from, m) {
       }
       break; }
     case 'testhostroll': if (Q.get('net') === 'local' && H.phase === 'lobby') {
-      const ids = Array.isArray(m.ids) ? m.ids : H.order;
-      for (const id of ids) if (H.players[id] && hostCanRoll(H.players[id])) hostDoRoll(id);
+      hostRollAll(true);
       break; }
     case 'testseekneed': if (Q.get('net') === 'local') { H.forceNeed = Math.max(0, +m.n || 0); hostReresolveIfNeedChanged(); } break;
     case 'testseekrem': if (Q.get('net') === 'local') {
@@ -1474,8 +1493,8 @@ function onHostMsg(m) {
     if (m.k === 'paintmiss') { endProjectile(m.sid); }
     if (m.k === 'seek') toast('👀 鬼出動了！');
     if (m.k === 'left') toast(`${m.name} 離開了`);
-    if (m.k === 'roll') { evLog.push(m); if (!diceThrow(m)) showDiePop(m); }
-    if (m.k === 'dicetie') { evLog.push(m); toast(`平手！${m.names} 都是 ${m.n} 點，請再擲一次`); }
+    if (m.k === 'rollall') { evLog.push(m); playThrow(m.tn, m.th, true); }
+    if (m.k === 'dicetie') { evLog.push(m); toast(`平手！${m.names} 都是 ${m.n} 點，房主會重擲`); }
     if (m.k === 'seekerpick') { evLog.push(m); toast(m.names?.length > 1 ? `👻 這局由 ${m.names.join('、')} 當鬼` : `👻 這局由 ${m.name} 當鬼（擲出 ${m.n} 點）`); }
     if (m.k === 'chirp') {
       evLog.push(m);
@@ -1592,10 +1611,15 @@ function colBlocksAtY(c, y, h = CFG.BODY_H) {
   return true;
 }
 function collide(x, z, y = 0, r = .33, skipSmall = true) {
-  for (const c of colliders) {
-    if (skipSmall && c.small) continue;
-    if (!colBlocksAtY(c, y)) continue;
-    [x, z] = resolveXZ(x, z, r, c);
+  // v14：多掃幾輪。一件家具若拆成很多盒子（蓮蓬頭約 35 個），一輪掃完可能被後面的盒子推回前面已經處理過的盒子裡。
+  for (let it = 0; it < 3; it++) {
+    const x0 = x, z0 = z;
+    for (const c of colliders) {
+      if (skipSmall && c.small) continue;
+      if (!colBlocksAtY(c, y)) continue;
+      [x, z] = resolveXZ(x, z, r, c);
+    }
+    if (Math.abs(x - x0) < 1e-5 && Math.abs(z - z0) < 1e-5) break;
   }
   return [Math.max(BOUNDS.x1, Math.min(BOUNDS.x2, x)), Math.max(BOUNDS.z1, Math.min(BOUNDS.z2, z))];
 }
@@ -1688,21 +1712,31 @@ function landY(x, z, y, ny, r) {
   return landed ? { y: top, landed: true } : { y: ny, landed: false };
 }
 function tryStepUp(x, z, y, dx, dz, r) {
-  const destX = x + dx, destZ = z + dz;
-  let best = null;
+  // v14：只有「踩上去之後真的能往前走、而且腳下真的踩得到」才踩上去；否則乾淨地停住（避免在家具前忽高忽低）
+  const destX = x + dx, destZ = z + dz, want = Math.hypot(dx, dz);
+  const cands = [];
   const consider = (c, t, needSmall) => {
     if (needSmall && !canSitOnShelf()) return;
     if (t <= y + .02 || t > y + CFG.STEP_UP) return;
-    if (!overCol(destX, destZ, r, { x1: c.x1, x2: c.x2, z1: c.z1, z2: c.z2 })) return;
-    if (best == null || t < best) best = t;
+    if (!overCol(destX, destZ, r, c)) return;
+    if (Math.min(c.x2 - c.x1, c.z2 - c.z1) < .22) return; // 太窄（浴缸邊、椅背、扶手）不能自動踩上去，要用跳的
+    cands.push([t, c]);
   };
   for (const c of colliders) {
     if (c.off) continue;
-    consider(c, c.y2 ?? 0, false);
+    if (!c.small) consider(c, c.y2 ?? 0, false); // 會被推走的小東西（凳子、箱子）不自動踩上去：踩上去它會滑走、人又掉下來（要上去用跳的）
     const sh = c.prop != null ? propObjs[c.prop]?.userData.shelves : null;
-    if (sh) for (const s of sh) consider(s, s.y, s.needSmall);
+    if (sh && !c.small) for (const s2 of sh) consider(s2, s2.y, s2.needSmall);
   }
-  return best;
+  cands.sort((a, b2) => a[0] - b2[0]);
+  for (const [t, c] of cands) {
+    const [cx, cz] = collide(destX, destZ, t, r);
+    if (Math.hypot(cx - x, cz - z) < want * .3) continue;           // 上去也走不動（被椅背／扶手擋住）
+    if (!overCol(cx, cz, Math.max(.05, r - .03), c)) continue;       // 上去後腳下沒踩到（會馬上掉下來）
+    if (collide(cx, cz, t, r).some((v, k) => Math.abs(v - (k ? cz : cx)) > .002)) continue;
+    return { y: t, x: cx, z: cz };
+  }
+  return null;
 }
 // ---------- 觀戰（v12）：被抓的躲藏者可跟隨活著的玩家，或切成自由飛的幽靈 ----------
 const spec = { mode: 'follow', target: null, was: false };
@@ -1851,6 +1885,38 @@ function tryMountWall(nx, nz, y, r, propId) {
   return false;
 }
 
+const camD = { cur: 0, init: false };
+const camFaded = new Map(); // 家具 id → 最後一次擋住鏡頭的時間
+function camFadeMark(id, now) {
+  const g = propObjs[id]; if (!g) return;
+  if (!camFaded.has(id)) { g.traverse(o => { if (!o.isMesh || o.userData.hull) return; if (!o.userData.fadeOrig) { o.userData.fadeOrig = o.material; o.userData.fadeMat = [].concat(o.material).map(m => { const c = m.clone(); c.transparent = true; c.opacity = .28; c.depthWrite = false; return c; }); if (!Array.isArray(o.material)) o.userData.fadeMat = o.userData.fadeMat[0]; } o.material = o.userData.fadeMat; }); }
+  camFaded.set(id, now);
+}
+function camFadeSweep(now) { for (const [id, t] of camFaded) if (now - t > 250) { camFaded.delete(id); propObjs[id]?.traverse(o => { if (o.isMesh && o.userData.fadeOrig) o.material = o.userData.fadeOrig; }); } } const camFocus = new THREE.Vector3();
+let camBlockCache = null, camBlockMap = null;
+function camBlockers() { // 目前地圖、看得到、不是小物件的家具網格
+  if (camBlockMap !== curMap || !camBlockCache) { camBlockMap = curMap; camBlockCache = pickProps.filter(o => { const id = o.userData.id; return id != null && propMap(id) === curMap && !SMALL.has(PROPS[id][0]); }); }
+  return camBlockCache;
+}
+function isDescendant(o, root) { for (let x = o; x; x = x.parent) if (x === root) return true; return false; }
+// 測試用：角色身體（約 0.15 半徑的小圓柱）和家具網格重疊多少；鏡頭到角色之間有沒有家具
+function bodyPenetration(R = .15, skipSmall = true) {
+  const meshes = pickProps.filter(o => { const id = o.userData.id; return id != null && propMap(id) === curMap && visibleChain(o) && !(skipSmall && SMALL.has(PROPS[id][0])); });
+  const rc = new THREE.Raycaster(); let side = 0, sink = 0, who = null; const o3 = new THREE.Vector3(), d3 = new THREE.Vector3();
+  for (const hy of [.1, .22, .34]) for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, dx = Math.sin(a), dz = Math.cos(a);
+    o3.set(local.x + dx * .7, local.y + hy, local.z + dz * .7); d3.set(-dx, 0, -dz); rc.set(o3, d3); rc.far = .7;
+    const h = rc.intersectObjects(meshes, false)[0]; if (h) { const rho = .7 - h.distance; if (R - rho > side) { side = R - rho; who = PROPS[h.object.userData.id]?.[0] + "#" + h.object.userData.id; } } }
+  for (const [ox, oz] of [[0, 0], [.09, 0], [-.09, 0], [0, .09], [0, -.09]]) { o3.set(local.x + ox, local.y + 1.2, local.z + oz); d3.set(0, -1, 0); rc.set(o3, d3); rc.far = 1.2;
+    const h = rc.intersectObjects(meshes, false)[0]; if (h && h.point.y > local.y + .02 && h.point.y < local.y + .4) { const sk = h.point.y - local.y; if (sk > sink) { sink = sk; if (sk > side) who = PROPS[h.object.userData.id]?.[0] + "#" + h.object.userData.id; } } }
+  return { side: +side.toFixed(3), sink: +sink.toFixed(3), who };
+}
+function camOccluded() {
+  const p = me(); if (!p) return null; const focus = camFocus.clone();
+  const to = camera.position.clone().sub(focus); const L = to.length(); const rc = new THREE.Raycaster(focus, to.normalize(), 0, L);
+  const ownD = p.prop >= 0 ? visuals.get(net.myId)?.disguise : null;
+  const h = rc.intersectObjects(camBlockers(), false).find(x => visibleChain(x.object) && !(ownD && isDescendant(x.object, ownD)) && !camFaded.has(x.object.userData.id));
+  return h ? { by: PROPS[h.object.userData.id]?.[0], at: +h.distance.toFixed(2), camDist: +L.toFixed(2) } : null;
+}
 function update(dt) {
   updateChirpPulses(dt);
   updateSmashFans(dt);
@@ -1894,7 +1960,7 @@ function update(dt) {
           const blocked = collide(nx, nz, local.y, r);
           if (local.grounded && Math.hypot(blocked[0] - nx, blocked[1] - nz) > .001) {
             const step = tryStepUp(local.x, local.z, local.y, dx, dz, r);
-            if (step != null) { local.y = step; local.vy = 0; }
+            if (step) { local.y = step.y; local.vy = 0; }
           }
           [nx, nz] = collide(local.x + dx, local.z + dz, local.y, r);
           [nx, nz] = pushSmall(nx, nz, local.y, r, dt, sprinting);
@@ -1970,8 +2036,17 @@ function update(dt) {
   let d = p ? dist : 22;
   if (p) { ray.set(focus, dir); ray.far = dist;
     const solids = wallMeshes.filter(w => w.userData.kind === 'wall' || w.userData.kind === 'ceiling' || w.userData.kind === 'floor');
-    const h = ray.intersectObjects(solids, false)[0]; if (h) d = Math.max(.6, h.distance - .25); }
-  camera.position.copy(focus).addScaledVector(dir, d); camera.lookAt(focus);
+    const h = ray.intersectObjects(solids, false)[0]; if (h) d = Math.max(.6, h.distance - .25);
+    // v14：家具擋在鏡頭和角色之間 → 鏡頭拉近到家具前面（不穿進家具裡）
+    const ownD = p.prop >= 0 ? visuals.get(net.myId)?.disguise : null;
+    const hits = ray.intersectObjects(camBlockers(), false).filter(x => visibleChain(x.object) && !(ownD && isDescendant(x.object, ownD)));
+    if (hits.length) d = Math.min(d, Math.max(.45, hits[0].distance - .22));
+    if (d < camD.cur || !camD.init) camD.cur = d; else camD.cur += (d - camD.cur) * Math.min(1, dt * 5); camD.init = true; d = camD.cur;
+    // 拉近後還是被擋（貼著家具）→ 把擋住的家具變半透明，鏡頭不會「看到家具裡面」
+    const now = performance.now();
+    for (const x of hits) if (x.distance < d + .3) camFadeMark(x.object.userData.id, now);
+    camFadeSweep(now); }
+  camera.position.copy(focus).addScaledVector(dir, d); camera.lookAt(focus); camFocus.copy(focus);
   for (const c of houseCeiling) c.visible = !debugCam || debugCam[2] === true; // debugCam[2]=true：截圖時保留天花板
   if (debugCam) { camera.position.set(...debugCam[0]); camera.lookAt(...debugCam[1]); }
 
@@ -2391,18 +2466,28 @@ function showScreen(n) {
 }
 // ---------- v13 3D 擲骰桌 ----------
 let tray = null; try { tray = createDiceTable({ THREE, canvas: $('diceCanvas'), low: LOW, onSound: diceSound }); } catch (e) { console.warn('dice table off', e); tray = null; $('diceTray')?.classList.add('hidden'); }
-const diceStat = { thrown: 0, placed: 0 };
+const diceStat = { thrown: 0, placed: 0, throws: 0 };
 const traySeen = new Map(); // id → 第一次在狀態裡看到點數、但桌上沒有骰子的時間
 function diceInfo(id, n, seed) { const s = G.s, i = s ? s.players.findIndex(q => q.id === id) : 0, q = s?.players[i];
   return { n, seed, slot: Math.max(0, i), color: q?.color || '#ffd23f', name: ((q?.avatar ? q.avatar + ' ' : '') + (q?.name || '玩家')).trim() }; }
-function diceThrow(m) { if (!tray || $('lobby').classList.contains('hidden')) return false; tray.throwDie(m.id, diceInfo(m.id, m.n, m.seed)); traySeen.delete(m.id); diceStat.thrown++; return true; }
+let trayTn = -1; const dieTn = new Map(); // 每顆骰子是第幾次擲骰丟的（比它舊的狀態不能拿來移除／重擺它） // 已經播過的擲骰編號（-1 = 還沒收到任何狀態）
+function playThrow(tn, th, fromEv) {
+  if (!(tn > trayTn)) return; const first = trayTn < 0 && !fromEv; trayTn = tn;
+  if (first || !th?.length) return; // 剛進房間看到的是舊的擲骰：直接擺好就好（syncDiceTray 會處理）
+  if (!tray || $('lobby').classList.contains('hidden')) { const mine = th.find(a => a[0] === net.myId) || th[0]; showDiePop({ id: mine[0], n: mine[1], name: G.s?.players.find(q => q.id === mine[0])?.name || '' }); return; }
+  tray.throwMany(th.map(([id, n, seed]) => [id, diceInfo(id, n, seed)])); for (const a of th) { traySeen.delete(a[0]); dieTn.set(a[0], tn); } diceStat.thrown += th.length; diceStat.throws++;
+  const el = $('diceTray'); if (el) { const r = el.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } // 確保大家看得到整個擲骰過程
+  updateUI();
+}
 function syncDiceTray(s) {
+  if (s.dice) playThrow(s.dice.tn || 0, s.dice.th, false);
   if (!tray) return; if (s.phase !== 'lobby') { tray.clear(); traySeen.clear(); return; }
   const ids = new Set(s.players.map(q => q.id)); for (const d of tray.list()) if (!ids.has(d.id)) tray.removeDie(d.id);
   const now = performance.now();
   for (const q of s.players) {
-    if (!q.roll) { if (tray.has(q.id)) tray.removeDie(q.id); traySeen.delete(q.id); continue; }
-    if (tray.has(q.id) && tray.dieN(q.id) === q.roll) { traySeen.delete(q.id); continue; }
+    const stale = (s.dice?.tn || 0) < (dieTn.get(q.id) || 0); // 這份狀態比骰子還舊（擲骰訊息先到）
+    if (!q.roll) { if (tray.has(q.id) && !stale) { tray.removeDie(q.id); dieTn.delete(q.id); } traySeen.delete(q.id); continue; }
+    if (stale || (tray.has(q.id) && tray.dieN(q.id) === q.roll)) { traySeen.delete(q.id); continue; }
     if (!traySeen.has(q.id)) traySeen.set(q.id, now); // 等一下擲骰事件，沒等到才直接放好
     else if (now - traySeen.get(q.id) > 2500) { tray.placeDie(q.id, diceInfo(q.id, q.roll)); traySeen.delete(q.id); diceStat.placed++; }
   }
@@ -2505,23 +2590,26 @@ function updateUI() {
   }
   if ($('rollBtn')) {
     const inTie = s.dice?.status === 'tie';
-    const canRoll = s.phase === 'lobby' && selfP && (inTie ? (s.dice.tied || []).includes(selfP.id) && (selfP.needReroll || !selfP.roll) : !selfP.roll);
+    const allR = s.players.length >= 2 && s.players.every(q => q.ready);
+    const left = inTie ? (s.dice.tied || []).filter(id => { const q = s.players.find(x => x.id === id); return q && (q.needReroll || !q.roll); }) : s.players.filter(q => !q.roll).map(q => q.id);
+    const canRoll = net.isHost && s.phase === 'lobby' && allR && left.length > 0 && !tray?.rolling();
+    $('rollBtn').classList.toggle('hidden', !net.isHost); // 只有房主有擲骰鍵
     $('rollBtn').disabled = !canRoll;
-    $('rollBtn').textContent = inTie && canRoll ? '再擲一次 🎲' : (selfP?.roll ? `已擲出 ${selfP.roll}` : '擲骰 🎲');
+    $('rollBtn').textContent = inTie ? '平手的人再擲 🎲' : (left.length || !allR ? '幫大家擲骰 🎲' : '已擲骰');
   }
   const skIds = s.dice?.seekers?.length ? s.dice.seekers : (s.dice?.seeker ? [s.dice.seeker] : []);
   const seekerPs = skIds.map(id => s.players.find(q => q.id === id)).filter(Boolean);
   if ($('diceMsg')) {
     const two = needSk >= 2;
-    $('diceMsg').textContent = tray?.rolling() ? '🎲 骰子滾動中…' : s.dice?.status === 'tie' ? `平手！${(s.dice.tied || []).map(id => s.players.find(q => q.id === id)?.name).filter(Boolean).join('、')} 點數相同，請再擲一次`
+    $('diceMsg').textContent = tray?.rolling() ? '🎲 骰子滾動中…' : s.dice?.status === 'tie' ? `平手！${(s.dice.tied || []).map(id => s.players.find(q => q.id === id)?.name).filter(Boolean).join('、')} 點數相同，${net.isHost ? '按「擲骰」重擲' : '等房主重擲'}`
       : (diceDone && seekerPs.length ? (seekerPs.length > 1
         ? `👻 這局由 ${seekerPs.map(q => `${q.name}（${q.roll} 點）`).join('、')} 當鬼`
         : `👻 這局由 ${seekerPs[0].name} 當鬼（擲出 ${seekerPs[0].roll} 點）`)
-        : (allReady ? (two ? '請大家按「擲骰」，點數最低的兩人當鬼（6 人以上）' : '請大家按「擲骰」，點數最低的當鬼') : ''));
+        : (allReady ? (net.isHost ? (two ? '大家都準備好了！按「擲骰」幫大家一起擲，最低的兩人當鬼' : '大家都準備好了！按「擲骰」幫大家一起擲，最低的當鬼') : (two ? '🎲 等房主擲骰…（最低的兩人當鬼）' : '🎲 等房主擲骰…')) : (two ? '大家都按「準備」後，房主會幫大家一起擲骰，最低的兩人當鬼' : '大家都按「準備」後，房主會幫大家一起擲骰')));
   }
   $('lobbyMsg').textContent = s.players.length < 2 ? '至少要 2 個人才能開始，把房號或連結傳給朋友！'
-    : !allReady ? (net.isHost ? '等所有人都按「準備」，並擲骰決定誰當鬼' : '請按「準備」，大家準備好並擲骰後，等房主開始')
-    : !diceDone && !testSkip ? (s.dice?.status === 'tie' ? '平手的人再擲一次，才能開始' : '請還沒擲的人按「擲骰」')
+    : !allReady ? (net.isHost ? '等所有人都按「準備」，再由你擲骰決定誰當鬼' : '請按「準備」，等房主擲骰、開始')
+    : !diceDone && !testSkip ? (net.isHost ? (s.dice?.status === 'tie' ? '平手了，再按一次「擲骰」重擲平手的人' : '按「擲骰」幫大家一起擲') : (s.dice?.status === 'tie' ? '平手了，等房主重擲…' : '等房主擲骰…'))
     : (net.isHost ? '可以開始遊戲了！' : '等房主按開始…');
   paintLooks();
   for (const b of document.querySelectorAll('#mapPick .mapBtn')) { b.classList.toggle('sel', b.dataset.map === (s.map || 'home')); b.disabled = !net.isHost; }
@@ -2733,7 +2821,7 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   resetDice() { if (Q.get('net') === 'local') send({ t: 'testdicereset' }); },
   addTestPlayers(list) { if (Q.get('net') === 'local') send({ t: 'testadd', list }); },
   hostRoll(ids) { if (Q.get('net') === 'local') send({ t: 'testhostroll', ids }); },
-  diceTray: { get ok() { return !!tray; }, list: () => tray ? tray.list() : [], rolling: () => !!tray?.rolling(), frames: () => tray?.frames || 0, sounds: () => diceSndN, stat: () => ({ ...diceStat }), planLen: () => tray?.planLen() || 0, trace: () => tray ? tray.trace.slice() : [], speed(x) { if (tray && Q.get('net') === 'local') tray.speed = x; } }, get muted() { return muted; },
+  diceTray: { get ok() { return !!tray; }, list: () => tray ? tray.list() : [], rolling: () => !!tray?.rolling(), frames: () => tray?.frames || 0, sounds: () => diceSndN, stat: () => ({ ...diceStat }), get tn() { return trayTn; }, planLen: () => tray?.planLen() || 0, planFrame: () => tray?.planFrame() || 0, trace: () => tray ? tray.trace.slice() : [], speed(x) { if (tray && Q.get('net') === 'local') tray.speed = x; }, projected: () => tray?.projected(), fov: () => tray?.fov, snap: () => tray?.snap() }, get muted() { return muted; },
   isTyping, sbFetchRooms, sbDeleteRoom,
   labelVisible: id => !!visuals.get(id)?.label?.visible,
   disguiseHasLight: id => { const d = visuals.get(id)?.disguise; if (!d) return false; let ok = false; d.traverse(o => { if (o.isLight || o.isSprite) ok = true; }); return ok; },
@@ -2761,6 +2849,7 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   visibleHullCount() { let n = 0; scene.traverse(o => { if (o.isMesh && o.userData.hull && visibleChain(o)) n++; }); return n; },
   visibleSpecTagCount() { let n = 0; scene.traverse(o => { if (o.isSprite && o.userData.specTag && visibleChain(o)) n++; }); return n; },
   camPos: () => [camera.position.x, camera.position.y, camera.position.z],
+  bodyPen: R => bodyPenetration(R), camFadedIds: () => [...camFaded.keys()], visTopAt(x, z, id) { const rc = new THREE.Raycaster(new THREE.Vector3(x, 4, z), new THREE.Vector3(0, -1, 0), 0, 4); const ms = []; propObjs[id].traverse(o => o.isMesh && ms.push(o)); const h = rc.intersectObjects(ms, false)[0]; return h ? h.point.y : null; }, camOccluded, playR, get stepUp() { return CFG.STEP_UP; },
   isSmashed: i => !!(G.s?.smashed || []).includes(i) || !!propObjs[i]?.userData.smashed,
   smashedIds: () => [...(G.s?.smashed || [])],
   debrisCount: () => debrisPieces.length,

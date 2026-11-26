@@ -460,3 +460,58 @@ export function buildCompound(name, root, size, THREE) {
 }
 
 export function classifyProp(name) { return classify(name); }
+
+// ---------- v14：用「往下打射線的高度圖」校正碰撞盒 ----------
+// 問題：自動切出來的盒子有時比看到的低（坐墊、床墊會陷進去）或漏掉部分（沙發扶手、床頭板）。
+// 做法：在模型本地座標每 6 公分打一條往下的射線，得到每格「看得到的頂面」與「最低的面」；
+//  1) 貼地的盒子：頂面改成盒內格子的中位數高度（平均看到的高度）；
+//  2) 沒被任何盒子蓋到、又明顯凸起的格子（扶手、床頭板…）合併成新的盒子補上。
+export function refineWithHeightfield(root, cols, size, THREE, opts = {}) {
+  if (!cols || !cols.length) return cols;
+  const step = opts.step || .06, ext = Math.max(size.x, size.z) * .5 + .02;
+  const meshes = []; root.updateMatrixWorld(true); root.traverse(o => { if (o.isMesh && o.visible !== false && !o.isSprite) meshes.push(o); });
+  if (!meshes.length) return cols;
+  const saved = new Map(); for (const m of meshes) for (const mat of [].concat(m.material)) if (mat && !saved.has(mat)) { saved.set(mat, mat.side); mat.side = THREE.DoubleSide; }
+  const rc = new THREE.Raycaster(), o = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0), top0 = size.y + .5;
+  const nx = Math.ceil(ext * 2 / step), nz = nx, cells = [];
+  try {
+    for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
+      const x = -ext + (ix + .5) * step, z = -ext + (iz + .5) * step;
+      o.set(x, top0, z); rc.set(o, down); rc.far = top0 + .1;
+      const hs = rc.intersectObjects(meshes, false);
+      if (!hs.length) { cells.push(null); continue; }
+      const top = hs[0].point.y, low = hs[hs.length - 1].point.y;
+      cells.push(top < .1 ? null : { x, z, top, low: low < .1 ? 0 : low, ix, iz });
+    }
+  } finally { for (const [mat, side] of saved) mat.side = side; }
+  const inBox = (b, c) => c.x >= b.x1 && c.x <= b.x2 && c.z >= b.z1 && c.z <= b.z2;
+  // 1) 貼地盒子的頂面 = 盒內格子的中位數
+  for (const b of cols) {
+    if ((b.y1 || 0) > .15 || (b.x2 - b.x1) * (b.z2 - b.z1) < .02) continue;
+    const ts = cells.filter(c => c && inBox(b, c) && c.top > (b.y1 || 0) + .03).map(c => c.top).sort((p, q) => p - q);
+    if (ts.length < 3) continue;
+    const med = ts[Math.floor(ts.length / 2)];
+    if (Math.abs(med - b.y2) > .06) b.y2 = Math.max((b.y1 || 0) + .05, med);
+  }
+  // 2) 沒蓋到的凸起：合併成新盒子
+  const covered = c => cols.some(b => inBox(b, c) && b.y2 >= c.top - .08 && (b.y1 || 0) <= c.low + .1); // 要從格子的底部一路蓋到頂
+  const res = new Map(); for (const c of cells) if (c && c.top > .15 && !covered(c)) res.set(c.iz * nx + c.ix, c);
+  const extra = [];
+  while (res.size && extra.length < (opts.maxExtra || 40)) {
+    const [k0, c0] = res.entries().next().value; res.delete(k0);
+    let x0 = c0.ix, x1 = c0.ix, z0 = c0.iz, z1 = c0.iz, top = c0.top, low = c0.low;
+    const ok = c => c && Math.abs(c.top - c0.top) < .2 && (c.low === 0) === (c0.low === 0);
+    const grab = (ix, iz) => { const k = iz * nx + ix, c = res.get(k); return ok(c) ? c : null; };
+    let grow = true;
+    while (grow) { grow = false;
+      // 往 +x 擴
+      { const col = []; for (let iz = z0; iz <= z1; iz++) col.push(grab(x1 + 1, iz)); if (col.every(Boolean)) { x1++; for (const c of col) { res.delete(c.iz * nx + c.ix); top = Math.max(top, c.top); low = Math.min(low, c.low); } grow = true; } }
+      { const col = []; for (let iz = z0; iz <= z1; iz++) col.push(grab(x0 - 1, iz)); if (col.every(Boolean)) { x0--; for (const c of col) { res.delete(c.iz * nx + c.ix); top = Math.max(top, c.top); low = Math.min(low, c.low); } grow = true; } }
+      { const row = []; for (let ix = x0; ix <= x1; ix++) row.push(grab(ix, z1 + 1)); if (row.every(Boolean)) { z1++; for (const c of row) { res.delete(c.iz * nx + c.ix); top = Math.max(top, c.top); low = Math.min(low, c.low); } grow = true; } }
+      { const row = []; for (let ix = x0; ix <= x1; ix++) row.push(grab(ix, z0 - 1)); if (row.every(Boolean)) { z0--; for (const c of row) { res.delete(c.iz * nx + c.ix); top = Math.max(top, c.top); low = Math.min(low, c.low); } grow = true; } }
+    }
+    const cellsN = (x1 - x0 + 1) * (z1 - z0 + 1); if (cellsN < 2 && !(low === 0 && top > .3)) continue; // 單一格的小裝飾不加（但落地的高邊緣，例如浴缸邊，要加）
+    extra.push({ x1: -ext + x0 * step, x2: -ext + (x1 + 1) * step, y1: low, y2: top, z1: -ext + z0 * step, z2: -ext + (z1 + 1) * step, hf: true });
+  }
+  return cols.concat(extra);
+}
