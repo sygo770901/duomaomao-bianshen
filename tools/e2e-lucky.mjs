@@ -79,8 +79,19 @@ ok('鬼出生在電梯廳', pA.role === 'seeker' && Math.hypot(pA.sx - M.seekers
 ok('躲藏者出生在開放辦公區', [pB, pC].every(q => M.hiders.some(h => Math.hypot(h[0] - q.sx, h[1] - q.sz) < .01)));
 const counts = () => Promise.all(pages.map(p => p.evaluate(() => __ph.activePropCount())));
 ok('所有人看到同樣多的福貓辦公室家具', (await counts()).every(n => n === M.N), JSON.stringify(await counts()));
-for (const p of [B, C]) { const a = await p.evaluate(() => [__ph.local.x, __ph.local.z]); await p.evaluate(() => { __ph.holdMove.iz = -1; }); await p.waitForTimeout(600); await p.evaluate(() => { __ph.holdMove.iz = 0; }); const c = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
-  ok('可以走動 ' + p._n, Math.hypot(c[0] - a[0], c[1] - a[1]) > .4, JSON.stringify([a, c])); }
+for (const p of [B, C]) {
+  const a = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
+  let c = a;
+  // 洗牌後預設面向可能頂到家具，換個方向再走，確認人沒有被卡死。
+  for (const [iz, ix] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    await p.evaluate(([iz, ix]) => { __ph.holdMove.iz = iz; __ph.holdMove.ix = ix; }, [iz, ix]);
+    await p.waitForTimeout(450);
+    await p.evaluate(() => { __ph.holdMove.iz = 0; __ph.holdMove.ix = 0; });
+    c = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
+    if (Math.hypot(c[0] - a[0], c[1] - a[1]) > .4) break;
+  }
+  ok('可以走動 ' + p._n, Math.hypot(c[0] - a[0], c[1] - a[1]) > .4, JSON.stringify([a, c]));
+}
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= M.L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .3);
 const I = { desk: lid('longDesk', 328.3, 226.0), chair: lid('meshChair', 319.4, 235.6) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 346, 280), geode: lid('geode', 448, 119.2),
@@ -94,8 +105,7 @@ ok('網椅是多塊碰撞（座位＋椅背）', chairCols.length >= 2, chairCol
 
 // 4. 變身：金屬椅 → 壁掛冷氣（掛牆）→ 福貓雕像
 async function tf(p, id) { await p.waitForTimeout(450); await p.evaluate(i => __ph.setTarget(i), id); await press(p, 'KeyF', 'tfBtn'); await p.waitForTimeout(600); }
-const bp = PROPS[I.metal];
-await B.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, .4); }, [bp[1] - 1.2, bp[2] + .6, bp[1], bp[2]]);
+await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] - 1.2, q[2] + .6); __ph.lookAt(q[0], q[2], .4); }, I.metal);
 await tf(B, I.metal);
 ok('變身成金屬椅', (await st(A)).players.find(q => q.id === ids.B).prop === I.metal);
 const acP = PROPS[I.ac];
@@ -108,17 +118,15 @@ await C.evaluate(() => { __ph.cam.yaw = Math.PI; __ph.slideWall(.5, 1, 0); });
 const w1 = await C.evaluate(() => [__ph.local.x, __ph.local.y, __ph.local.z, __ph.mounted]);
 ok('冷氣可沿牆滑動且不離開牆', Math.abs(w1[0] - w0[0]) > .2 && w1[3] && Math.abs(w1[2] - w0[2]) < .1, JSON.stringify([w0, w1]));
 await press(C, 'Space', 'jumpBtn'); await C.waitForTimeout(1100);
-const sp = PROPS[I.statue];
-await C.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z, 0); __ph.lookAt(lx, lz, .3); }, [sp[1] - 1.3, sp[2], sp[1], sp[2]]);
+await C.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] - 1.3, q[2], 0); __ph.lookAt(q[0], q[2], .3); }, I.statue);
 await tf(C, I.statue);
 PC = (await st(A)).players.find(q => q.id === ids.C);
 ok('變身成福貓雕像', PC.prop === I.statue, JSON.stringify([PC.prop]));
 await C.evaluate(([x, z]) => { __ph.teleport(x, z, 0); }, [X(316), Z(194)]);
 
 // 5. 跳上長桌（站在桌面）
-const dp = PROPS[I.desk], top = await B.evaluate(i => __ph.propTop(i), I.desk);
-// 長桌 r=0：短邊在 ±x
-await B.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z, 0); __ph.lookAt(lx, lz, .2); }, [dp[1] - 1.75, dp[2], dp[1], dp[2]]);
+const top = await B.evaluate(i => __ph.propTop(i), I.desk);
+await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] - 1.75, q[2], 0); __ph.lookAt(q[0], q[2], .2); }, I.desk);
 await B.waitForTimeout(200);
 await B.evaluate(() => { __ph.holdMove.iz = -1; }); await B.keyboard.press('Space'); await B.waitForTimeout(800); await B.evaluate(() => { __ph.holdMove.iz = 0; });
 const ly = await B.evaluate(() => __ph.local.y);
@@ -127,8 +135,19 @@ await B.evaluate(([x, z]) => { __ph.teleport(x, z, 0); }, [X(291), Z(194)]);
 
 // 6. 找人：破壞小件（網椅）會碎、長桌不會；抓人 → 鬼贏
 await waitFor(A, () => __ph.state?.phase === 'seek', null, 30000);
-const ch = PROPS[I.chair];
-await A.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, .3); __ph.resetSmashCd(); }, [ch[1], ch[2] + 1.4, ch[1], ch[2]]);
+await A.evaluate(i => {
+  const q = __ph.propPos(i);
+  const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [0.7, 0.7], [-0.7, 0.7]];
+  let x = q[0], z = q[2] + 1.4;
+  for (const dist of [1.3, 1.7, 2.1]) for (const [dx, dz] of dirs) {
+    const nx = q[0] + dx * dist, nz = q[2] + dz * dist;
+    const c = __ph.collideAt(nx, nz, 0.3, 0);
+    if (Math.hypot(c[0] - nx, c[1] - nz) > 0.15) continue;
+    x = nx; z = nz;
+    if (__ph.shotLane(nx, nz, q[0], q[2], null, i).clear) { __ph.teleport(x, z, 0); __ph.lookAt(q[0], q[2], .25); __ph.resetSmashCd(); return; }
+  }
+  __ph.teleport(x, z, 0); __ph.lookAt(q[0], q[2], .25); __ph.resetSmashCd();
+}, I.chair);
 await A.waitForTimeout(300);
 const n0 = await A.evaluate(() => __ph.evLog.filter(e => e.k === 'smash').length);
 await A.evaluate(() => __ph.doSmash());

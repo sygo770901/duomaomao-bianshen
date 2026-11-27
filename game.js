@@ -2,11 +2,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js?v=24';
-import * as OFFICE from './office.js?v=24';
-import * as LUCKY from './lucky.js?v=24';
-import { buildCompound, refineWithHeightfield } from './compound.js?v=24';
-import { createDiceTable } from './dice3d.js?v=24';
+import { LocalPeer } from './localnet.js?v=25';
+import * as OFFICE from './office.js?v=25';
+import * as LUCKY from './lucky.js?v=25';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=25';
+import { createDiceTable } from './dice3d.js?v=25';
+import { computeLayout, classifyIndex } from './layout.js?v=25';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -657,6 +658,45 @@ function placeProps() {
   setMap(curMap);
 }
 
+// 本局洗牌結果（由種子決定）。null = 用地圖原本的座標。
+let layoutDelta = null, layoutSeedApplied = 0, layoutMapApplied = '';
+function propBase(i) {
+  const pr = PROPS[i];
+  const d = layoutDelta && layoutDelta[i];
+  const wall = WALL_PROP.has(pr[0]);
+  return { x: d ? d.x : pr[1], z: d ? d.z : pr[2], y: pr[4] || 0, ry: pr[3] * Math.PI / 180, mnt: wall ? 1 : 0 };
+}
+function layoutSizes() {
+  const sizes = {};
+  for (const n of Object.keys(modelCache)) {
+    const z = modelCache[n]?.size;
+    if (z) sizes[n] = { x: z.x, y: z.y, z: z.z };
+  }
+  return sizes;
+}
+function applyLayoutSeed(map, seed) {
+  const s = seed | 0, m = map || 'home';
+  if (s === layoutSeedApplied && m === layoutMapApplied) return;
+  const prev = layoutSeedApplied;
+  layoutSeedApplied = s; layoutMapApplied = m;
+  layoutDelta = null;
+  if (s && Object.keys(modelCache).length) {
+    try {
+      const M = MAPS[m];
+      const cols = (M?.colliders || []).filter(c => c.prop == null && (c.y2 ?? 0) > 0.34);
+      const spawns = [...(M?.hiders || []), ...(M?.seekers || []), M?.seeker].filter(p => p && p.length >= 2);
+      layoutDelta = computeLayout({ map: m, seed: s, props: PROPS, propMap, sizes: layoutSizes(), staticCols: cols, spawns, wallNames: WALL_PROP });
+    } catch (e) { layoutDelta = null; console.warn('layout', e); }
+  }
+  // 大廳原本就在地圖座標上，不要重算碰撞盒（跟載入時一樣）。只有真的洗過牌才挪回去。
+  if (!propObjs.length || (!s && !prev)) return;
+  for (let i = 0; i < propObjs.length; i++) {
+    if (!propObjs[i]) continue;
+    const b = propBase(i);
+    applyPropPose(i, b.x, b.z, 0, b.y, b.ry, b.mnt);
+  }
+}
+
 // ---------- 角色外觀（簡單幾何的可愛小人）----------
 function makeLabel(text, color) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d');
@@ -965,7 +1005,7 @@ function createRoom(prof, tries = 0) {
   peer.on('open', id => {
     Object.assign(net, { peer, isHost: true, myId: id, code });
     const map0 = MAPS[Q.get('map')] ? Q.get('map') : 'home';
-    H = { map: map0, phase: 'lobby', endAt: 0, players: {}, order: [], hp: CFG.HP, hps: {}, winner: null, reason: '', round: 0, lastTaunt: {}, lastShot: {}, lastSmash: {}, smashed: {}, hideMs: defaultHideMs(), seekMs: defaultSeekMs(map0), timeEdited: false, moved: {}, chat: [], dice: { status: 'idle', seeker: null, seekers: [], tied: [], need: 1 }, nextRolls: {}, chirpAt: 0, forceNeed: 0 };
+    H = { map: map0, phase: 'lobby', endAt: 0, players: {}, order: [], hp: CFG.HP, hps: {}, winner: null, reason: '', round: 0, lastTaunt: {}, lastShot: {}, lastSmash: {}, smashed: {}, hideMs: defaultHideMs(), seekMs: defaultSeekMs(map0), timeEdited: false, moved: {}, chat: [], dice: { status: 'idle', seeker: null, seekers: [], tied: [], need: 1 }, nextRolls: {}, chirpAt: 0, forceNeed: 0, layoutSeed: 0 };
     hostAddPlayer(id, prof); enterLobby(); startRoomHeartbeat(); setInterval(hostTick, 66); hostTick();
   });
   peer.on('connection', conn => {
@@ -1153,6 +1193,7 @@ function hostRemovePlayer(id) {
 function hostStart() {
   if (!hostCanStart()) return;
   H.round++; H.winner = null; H.reason = ''; H.shots = []; H.lastShot = {}; H.moved = {}; H.chirpAt = 0;
+  H.layoutSeed = (Math.random() * 0x7fffffff) | 0 || 1;
   let seekers = (H.dice?.seekers?.length ? H.dice.seekers : (H.dice?.seeker ? [H.dice.seeker] : [H.order[0]])).filter(id => H.players[id]);
   if (Q.get('seekerhost') === '1') seekers = [net.myId]; // 只給截圖測試用
   if (!seekers.length) seekers = [H.order[0]];
@@ -1168,9 +1209,10 @@ function hostStart() {
     Object.assign(p, { x, z, sx: x, sz: z }); }
   H.smashed = {}; H.lastSmash = {};
   for (const q of Object.values(H.players)) q.tfLockUntil = 0;
+  applyLayoutSeed(H.map || 'home', H.layoutSeed);
   H.phase = 'hide'; H.endAt = Date.now() + roomHideMs();
 }
-function hostEnd(winner, reason) { if (H.phase === 'end' || H.phase === 'lobby') return; H.phase = 'end'; H.winner = winner; H.reason = reason; H.moved = {}; for (const p of Object.values(H.players)) { p.prop = -1; p.y = 0; p.mnt = 0; p.tfLockUntil = 0; } H.endAt = Date.now() + CFG.END_MS; }
+function hostEnd(winner, reason) { if (H.phase === 'end' || H.phase === 'lobby') return; H.phase = 'end'; H.winner = winner; H.reason = reason; H.layoutSeed = 0; H.moved = {}; applyLayoutSeed(H.map || 'home', 0); for (const p of Object.values(H.players)) { p.prop = -1; p.y = 0; p.mnt = 0; p.tfLockUntil = 0; } H.endAt = Date.now() + CFG.END_MS; }
 function syncPrimaryHp() {
   const ids = Object.keys(H.hps || {});
   if (!ids.length) { H.hp = 0; return; }
@@ -1190,7 +1232,7 @@ function hostTick() {
   const now = Date.now();
   if (H.phase === 'hide' && now >= H.endAt) { H.phase = 'seek'; H.endAt = now + roomSeekMs(H.map); H.chirpAt = 0; broadcast({ t: 'ev', k: 'seek' }); }
   else if (H.phase === 'seek' && now >= H.endAt) hostEnd('hiders', '時間到！還有人沒被找到');
-  else if (H.phase === 'end' && now >= H.endAt) { H.phase = 'lobby'; H.moved = {}; H.hps = {}; H.chirpAt = 0; H.smashed = {}; H.lastSmash = {}; for (const p of Object.values(H.players)) { p.prop = -1; p.alive = true; p.role = 'hider'; p.y = 0; p.mnt = 0; p.ready = false; p.roll = 0; p.needReroll = 0; p.tfLockUntil = 0; } lobbyResetDice(); }
+  else if (H.phase === 'end' && now >= H.endAt) { H.phase = 'lobby'; H.layoutSeed = 0; H.moved = {}; applyLayoutSeed(H.map || 'home', 0); H.hps = {}; H.chirpAt = 0; H.smashed = {}; H.lastSmash = {}; for (const p of Object.values(H.players)) { p.prop = -1; p.alive = true; p.role = 'hider'; p.y = 0; p.mnt = 0; p.ready = false; p.roll = 0; p.needReroll = 0; p.tfLockUntil = 0; } lobbyResetDice(); }
   if (H.phase === 'seek') {
     const rem = H.endAt - now;
     if (rem <= CFG.CHIRP_WINDOW && rem > 0 && (!H.chirpAt || now >= H.chirpAt)) {
@@ -1207,7 +1249,7 @@ function hostTick() {
   const moved = Object.entries(H.moved || {}).map(([i, v]) => [+i, +v.x.toFixed(2), +v.z.toFixed(2), v.tip ? 1 : 0, +(v.y ?? (PROPS[i][4] || 0)).toFixed(2), +(v.ry ?? (PROPS[i][3] * Math.PI / 180)).toFixed(3), v.mnt != null ? (v.mnt ? 1 : 0) : (WALL_PROP.has(PROPS[i][0]) ? 1 : 0)]);
   const smashed = Object.keys(H.smashed || {}).map(Number);
   const smashAt = Object.entries(H.lastSmash || {}).map(([id, ts]) => [id, ts]);
-  broadcast({ t: 's', map: H.map || 'home', phase: H.phase, rem: Math.max(0, H.endAt - now), hp: H.hp, hps: hpsList(), winner: H.winner, reason: H.reason, round: H.round, code: net.code, moved,
+  broadcast({ t: 's', map: H.map || 'home', phase: H.phase, rem: Math.max(0, H.endAt - now), hp: H.hp, hps: hpsList(), winner: H.winner, reason: H.reason, round: H.round, code: net.code, lay: H.layoutSeed || 0, moved,
     hideMs: H.hideMs, seekMs: H.seekMs, smashed, smashAt,
     dice: dicePack(),
     players: H.order.map(id => { const p = H.players[id]; return [p.id, p.name, p.color, p.role, p.alive, +p.x.toFixed(2), +p.z.toFixed(2), +p.ry.toFixed(2), p.prop, p.tf, p.sx, p.sz, +(p.py || 0).toFixed(3), +(p.y || 0).toFixed(2), p.mnt ? 1 : 0, p.ready ? 1 : 0, p.avatar || '', p.roll || 0, p.needReroll ? 1 : 0, Math.max(0, (p.tfLockUntil || 0) - now)]; }) });
@@ -1260,7 +1302,8 @@ function hostSimShots() {
       const hung = pr && WALL_PROP.has(pr[0]) && !!q.mnt;
       const r = pr ? Math.max(.26, Math.max(sz.x, sz.z) * .45) : .24;
       const y0 = hung ? ((q.y || 0) - sz.y * .5) : (q.y || 0);
-      const y1 = hung ? ((q.y || 0) + sz.y * .5) : (y0 + (pr ? sz.y : .62));
+      // 矮家具（椅子、板凳）的可視中心比碰撞高度高，對準畫面中心時彈道會從盒子上方擦過。
+      const y1 = hung ? ((q.y || 0) + sz.y * .5) : (y0 + Math.max(pr ? sz.y : .62, 0.9));
       const fx = sh.pos.x - q.x, fz = sh.pos.z - q.z, A = sh.d.x ** 2 + sh.d.z ** 2, B = 2 * (fx * sh.d.x + fz * sh.d.z), C = fx * fx + fz * fz - r * r;
       let t = null; if (C <= 0) t = 0; else if (A > 1e-9) { const disc = B * B - 4 * A * C; if (disc >= 0) { const t1 = (-B - Math.sqrt(disc)) / (2 * A); if (t1 >= 0 && t1 <= step) t = t1; } }
       if (t == null) continue; const y = sh.pos.y + sh.d.y * t; if (y < y0 - .05 || y > y1 + .05) continue;
@@ -1301,11 +1344,12 @@ function hostSimShots() {
 function hostApplyBump(p, i, x, z, tip) {
   const pr = PROPS[i]; if (!pr || !SMALL.has(pr[0])) return;
   if (!H.moved) H.moved = {};
-  const cur = H.moved[i] || { x: pr[1], z: pr[2], tip: 0, y: pr[4] || 0, ry: pr[3] * Math.PI / 180, mnt: 0 };
-  if ((cur.y ?? (pr[4] || 0)) > .05) return;
+  const b = propBase(i);
+  const cur = H.moved[i] || { x: b.x, z: b.z, tip: 0, y: b.y, ry: b.ry, mnt: b.mnt };
+  if ((cur.y ?? b.y) > .05) return;
   if (Math.hypot(p.x - cur.x, p.z - cur.z) > 3.2) return;
   if (Math.hypot(x - cur.x, z - cur.z) > 2.5) return;
-  if (Math.hypot(x - pr[1], z - pr[2]) > 14) return;
+  if (Math.hypot(x - b.x, z - b.z) > 14) return;
   H.moved[i] = { ...cur, x, z, tip: tip ? 1 : cur.tip };
 }
 function hostOnMsg(from, m) {
@@ -1357,21 +1401,26 @@ function hostOnMsg(from, m) {
       if (H.phase === 'seek') { H.endAt = Date.now() + Math.max(0, +m.ms || 0); H.chirpAt = 0; }
       break; }
     case 'testsmashready': if (Q.get('net') === 'local') H.lastSmash[from] = 0; break;
-    case 'p': // 位置；pp = 用戶端認知的變身家具，跟主機不一致時（剛變身）先忽略，避免舊位置蓋掉
-      if (!(p.role === 'seeker' && H.phase === 'hide') && (m.pp ?? -1) === p.prop) {
+    case 'p': { // 位置。剛變身前送出的舊座標（pp 還是上一件）不要蓋掉新位置；變身之後送出的座標即使 pp 還沒更新也要收下。
+      const seekBlind = p.role === 'seeker' && H.phase === 'hide';
+      const ppOk = (m.pp ?? -1) === p.prop;
+      const stale = !ppOk && p.tfAt && m.now && m.now < p.tfAt;
+      if (!seekBlind && !stale) {
         p.x = +m.x || 0; p.z = +m.z || 0; p.ry = +m.ry || 0; p.py = +m.py || 0; p.y = +m.y || 0; p.mnt = m.mnt ? 1 : 0;
         if (m.bumps) for (const b of m.bumps) hostApplyBump(p, b[0], b[1], b[2], b[3]);
-      } break;
+      }
+      break; }
     case 'tf': {
       const pr = PROPS[m.id]; if (!playing || p.role !== 'hider' || !p.alive || !pr || p.prop === m.id || propMap(m.id) !== (H.map || 'home')) break;
       if (H.smashed && H.smashed[m.id]) break;
       if ((p.tfLockUntil || 0) > Date.now()) break;
       const mv = H.moved?.[m.id];
       const wall = WALL_PROP.has(pr[0]);
-      const cx = mv ? mv.x : pr[1], cz = mv ? mv.z : pr[2];
-      const cy = mv && mv.y != null ? mv.y : (wall ? (pr[4] || 1.5) : (pr[4] || 0));
-      const cry = mv && mv.ry != null ? mv.ry : pr[3] * Math.PI / 180;
-      const cmnt = mv && mv.mnt != null ? mv.mnt : (wall ? 1 : 0);
+      const b = propBase(m.id);
+      const cx = mv ? mv.x : b.x, cz = mv ? mv.z : b.z;
+      const cy = mv && mv.y != null ? mv.y : b.y;
+      const cry = mv && mv.ry != null ? mv.ry : b.ry;
+      const cmnt = mv && mv.mnt != null ? mv.mnt : b.mnt;
       if (Math.hypot(cx - p.x, cz - p.z) > CFG.TF_RANGE + 1.5) break;
       if (Object.values(H.players).some(q => q !== p && q.alive && q.role === 'hider' && q.prop === m.id)) break; // 別人已經變成它
       // 再次變身時，先把上一件變身家具留在當下原地（牆掛飾若貼牆就留在牆上）
@@ -1379,7 +1428,7 @@ function hostOnMsg(from, m) {
         if (!H.moved) H.moved = {};
         H.moved[p.prop] = { x: p.x, z: p.z, y: p.y || 0, ry: p.py || 0, tip: 0, mnt: p.mnt ? 1 : 0 };
       }
-      p.prop = m.id; p.tf++; p.x = cx; p.z = cz; p.py = cry; p.y = cy; p.mnt = cmnt ? 1 : 0; break; }
+      p.prop = m.id; p.tf++; p.tfAt = Date.now(); p.x = cx; p.z = cz; p.py = cry; p.y = cy; p.mnt = cmnt ? 1 : 0; break; }
     case 'hshot': { // 躲藏者噴漆：主機模擬飛行，打中鬼才糊畫面
       if (H.phase !== 'seek' || p.role !== 'hider' || !p.alive) break;
       const now = Date.now(); if (now - (H.lastTaunt[from] || 0) < CFG.TAUNT_CD - 80) break; H.lastTaunt[from] = now;
@@ -1426,7 +1475,8 @@ function hostOnMsg(from, m) {
         if (H.smashed[i]) continue;
         const pr = PROPS[i]; if (!canSmashProp(pr[0])) continue;
         const mv = H.moved?.[i];
-        const px = mv ? mv.x : pr[1], pz = mv ? mv.z : pr[2];
+        const bse = propBase(i);
+        const px = mv ? mv.x : bse.x, pz = mv ? mv.z : bse.z;
         if (!propInSmashCone(i, sx, sy, sz, fx, fy, fz, mv)) continue;
         H.smashed[i] = 1; hits.push({ i, x: +px.toFixed(3), z: +pz.toFixed(3), name: pr[0] });
       }
@@ -1532,6 +1582,7 @@ function onState(m) {
   if ((m.map || 'home') !== curMap) { setMap(m.map || 'home'); if (self && m.phase === 'lobby') { local.x = self.x; local.z = self.z; local.y = 0; } }
   if (m.phase === 'lobby' && prevPhase && prevPhase !== 'lobby') clearDebris();
   if (self && m.round !== G.lastRound && m.phase !== 'lobby') { G.lastRound = m.round; onHostMsg._chirped = false; local.x = self.sx; local.z = self.sz; local.y = 0; local.vy = 0; local.grounded = true; local.mounted = false; local.ry = 0; local.stam = CFG.STAMINA; local.stamWait = 0; local.exhausted = false; cam.yaw = Math.PI; cam.pitch = .45; target = null; clearPaint(); clearPaintOverlay(); clearDebris(); lastSmashAt = 0; local.pp = -1; local.lock = true; }
+  applyLayoutSeed(m.map || 'home', m.lay | 0);
   if (self && (self.prop ?? -1) !== local.pp) { // 剛變身：站到那件家具的位置、用它的方向
     local.pp = self.prop ?? -1; if (local.pp >= 0) { local.x = self.x; local.z = self.z; local.py = self.py; local.mounted = !!self.mnt; local.y = self.y || 0; local.vy = 0; local.grounded = !local.mounted;
       if (local.mounted) { const nx = Math.sin(self.py), nz = Math.cos(self.py); local.mntAxis = Math.abs(nx) > Math.abs(nz) ? 'x' : 'z'; local.mntPos = local.mntAxis === 'x' ? self.x : self.z; local.mntNx = nx; local.mntNz = nz; }
@@ -1669,10 +1720,10 @@ function syncMoved(moved) {
     if (!g) return;
     const pr = PROPS[i]; const m = map.get(i);
     if (m) applyPropPose(i, m[1], m[2], m[3], m[4], m[5], m[6]);
-    else { // 回到原位（回合結束或沒被撞過）
-      const ry0 = pr[3] * Math.PI / 180, y0 = pr[4] || 0;
-      if (Math.abs(g.position.x - pr[1]) > .005 || Math.abs(g.position.z - pr[2]) > .005 || Math.abs(g.position.y - y0) > .005 || Math.abs(g.rotation.y - ry0) > .005 || Math.abs(g.rotation.x) > .005) {
-        applyPropPose(i, pr[1], pr[2], 0, y0, ry0, WALL_PROP.has(pr[0]) ? 1 : 0);
+    else { // 回到這一局的基準位置（洗牌後的位子；大廳則是地圖原點）
+      const b = propBase(i);
+      if (Math.abs(g.position.x - b.x) > .005 || Math.abs(g.position.z - b.z) > .005 || Math.abs(g.position.y - b.y) > .005 || Math.abs(g.rotation.y - b.ry) > .005 || Math.abs(g.rotation.x) > .005) {
+        applyPropPose(i, b.x, b.z, 0, b.y, b.ry, b.mnt);
       }
     }
   });
@@ -1993,7 +2044,7 @@ function update(dt) {
   if (net.myId && performance.now() - local.lastSend > 66) {
     local.lastSend = performance.now();
     if (p) { const bumps = pendingBumps.size ? [...pendingBumps.values()] : undefined; pendingBumps.clear();
-      send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, bumps }); }
+      send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now(), bumps }); }
   }
   updatePaint(dt);
 
@@ -2058,17 +2109,18 @@ function update(dt) {
 
   // 躲的人：準心瞄準家具
   if (p && p.role === 'hider' && p.alive && (s.phase === 'hide' || s.phase === 'seek')) {
-    if (target != null && !inRange(target)) target = null;
+    if (target != null && !inRange(target)) { target = null; aimHoldUntil = 0; }
     if (!tapTargetUntil || performance.now() > tapTargetUntil) {
       ray.setFromCamera({ x: 0, y: 0 }, camera); ray.far = 30;
-      const h = ray.intersectObjects(pickProps, false).find(h => inRange(h.object.userData.id));
-      target = h ? h.object.userData.id : null;
+      const h = ray.intersectObjects(pickProps, false).find(h => inRange(h.object.userData.id) && visibleChain(h.object) && propMap(h.object.userData.id) === curMap);
+      if (h) { target = h.object.userData.id; aimHoldUntil = performance.now() + 350; }
+      else if (performance.now() > aimHoldUntil) target = null;
     }
   } else target = null;
   if (target != null) { if (highlight.userData.t !== target) { highlight.box.setFromObject(propObjs[target]); highlight.box.expandByScalar(.05); highlight.userData.t = target; } highlight.visible = true; }
   else { highlight.visible = false; highlight.userData.t = null; }
 }
-let tapTargetUntil = 0;
+let tapTargetUntil = 0, aimHoldUntil = 0;
 let debugCam = null;
 const highlight = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color('#ffe14d')); highlight.visible = false; scene.add(highlight);
 function inRange(id) { const o = propObjs[id]; if (!o || o.userData.smashed || (G.s?.smashed || []).includes(id)) return false; return Math.hypot(o.position.x - local.x, o.position.z - local.z) < CFG.TF_RANGE + o.userData.radius * .5; }
@@ -2080,7 +2132,23 @@ function doTransform() {
   if (target == null) return toast('先對準或點一下附近的家具');
   if (target === p.prop) return toast('你已經是這個了');
   if ((s.smashed || []).includes(target)) return toast('這件家具已經被破壞了');
-  send({ t: 'tf', id: target });
+  const id = target;
+  // 位置封包約 66ms 才送一次。變身的距離是用主機上的座標算的，
+  // 若這包還帶著「上一件家具」的編號，主機會整包丟掉，人就停在舊位子，下一件變身會被判太遠。
+  // 先用目前的編號把人送到站的地方，再變身；變身送出後立刻改成本地編號，後續移動才不會被丟掉。
+  send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now() });
+  send({ t: 'tf', id });
+  const g = propObjs[id], pr = PROPS[id];
+  if (!g || !pr || propMap(id) !== (s.map || 'home')) return;
+  local.pp = id;
+  local.x = g.position.x; local.z = g.position.z; local.py = g.rotation.y;
+  const wall = WALL_PROP.has(pr[0]);
+  local.y = g.position.y || 0; local.vy = 0; local.mounted = wall; local.grounded = !wall;
+  if (wall) {
+    const nx = Math.sin(local.py), nz = Math.cos(local.py);
+    local.mntAxis = Math.abs(nx) > Math.abs(nz) ? 'x' : 'z';
+    local.mntPos = local.mntAxis === 'x' ? local.x : local.z; local.mntNx = nx; local.mntNz = nz;
+  } else local.mntAxis = null;
 }
 let lastSmashAt = 0;
 function smashAim() {
@@ -2127,8 +2195,9 @@ function propInSmashCone(i, ox, oy, oz, fx, fy, fz, mv) {
     }
     return false;
   }
-  const px = mv ? mv.x : pr[1], pz = mv ? mv.z : pr[2];
-  const py0 = mv && mv.y != null ? mv.y : (pr[4] || 0);
+  const bse = propBase(i);
+  const px = mv ? mv.x : bse.x, pz = mv ? mv.z : bse.z;
+  const py0 = mv && mv.y != null ? mv.y : bse.y;
   const hy = (modelCache[pr[0]]?.size?.y || .4) * .5;
   return inSmashCone(px, py0 + hy, pz, ox, oy, oz, fx, fy, fz);
 }
@@ -2352,7 +2421,14 @@ function pickAt(cx, cy) {
   ray.setFromCamera(ndc, camera); ray.far = 60;
   const objs = [...pickProps, ...wallMeshes];
   for (const [id, v] of visuals) if (id !== net.myId) v.root.traverse(o => o.isMesh && objs.push(o));
-  const hits = ray.intersectObjects(objs, false).filter(h => visibleChain(h.object));
+  const hits = ray.intersectObjects(objs, false).filter(h => {
+    if (!visibleChain(h.object)) return false;
+    const k = h.object.userData.kind;
+    // 鏡頭貼到天花板時，射線會先打到天花板，點不到前面的家具。
+    if (k === 'ceiling') return false;
+    if (h.distance < 0.15) return false;
+    return true;
+  });
   lastPickPoint = hits[0] ? hits[0].point.clone() : ray.ray.at(40, new THREE.Vector3());
   return hits[0]?.object.userData || null;
 }
@@ -2815,13 +2891,21 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   hasGun: id => !!visuals.get(id)?.buddy.getObjectByName('gun'), splatCount: () => splats.length, projCount: () => projectiles.size,
   disguiseYaw: id => visuals.get(id)?.disguise?.rotation.y ?? null, disguisePos: id => { const v = visuals.get(id); return v ? [v.root.position.x, v.root.position.z] : null; },
   setDebugCam(c) { debugCam = c; },
-  teleport(x, z, y) { local.x = x; local.z = z; if (y != null) { local.y = y; local.vy = 0; local.grounded = y <= .05; } },
+  teleport(x, z, y) {
+    local.x = x; local.z = z;
+    if (y != null) { local.y = y; local.vy = 0; local.grounded = y <= .05; }
+    // 測試用瞬移要立刻告訴主機。背景分頁的畫面迴圈可能先不跑，閃避的座標就送不出去。
+    if (Q.get('net') === 'local' && net.myId) send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now() });
+  },
   screenOf(kind, id) { const o = kind === 'prop' ? propObjs[id] : visuals.get(id)?.root; if (!o) return null;
     const bb = new THREE.Box3(); o.traverse(m => { if (m.isMesh && visibleChain(m)) bb.expandByObject(m); }); const c = bb.getCenter(new THREE.Vector3()); c.project(camera);
     return { x: (c.x + 1) / 2 * innerWidth, y: (1 - c.y) / 2 * innerHeight, onScreen: Math.abs(c.x) < 1 && Math.abs(c.y) < 1 && c.z < 1 }; },
   lookAt(x, z, pitch) { cam.yaw = Math.atan2(local.x - x, local.z - z); cam.pitch = pitch != null ? pitch : .5; },
   overlayOpacity: () => { const e = $('paintOv'); return e ? (parseFloat(getComputedStyle(e).opacity) || 0) : 0; },
   propPos: i => { const g = propObjs[i]; return g ? [g.position.x, g.position.y, g.position.z] : null; },
+  propBase: i => { const b = propBase(i); return [b.x, b.y, b.z, b.ry]; },
+  layoutClass: i => classifyIndex(i, { props: PROPS, propMap, sizes: layoutSizes(), wallNames: WALL_PROP }),
+  layoutSeed: () => layoutSeedApplied,
   propTop: i => propObjs[i]?.userData.height ?? 0,
   propTip: i => propObjs[i]?.rotation.x || 0,
   isSmall: i => !!propObjs[i]?.userData.small,
@@ -2842,6 +2926,28 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   get curMap() { return curMap; }, HOME_PROP_N, LUCKY_START, LUCKY_N: LUCKY.PROPS.length, LUCKY_ROOMS: LUCKY.ROOMS, propMap, MAPS,
   mapGroupVisible: id => !!MAPS[id]?.group.visible, activePropCount: () => propObjs.filter((g, i) => propMap(i) === curMap && g.visible).length,
   colliderCount: () => colliders.length, collideAt: (x, z, r, y) => collide(x, z, y ?? 0, r ?? .33),
+  // 從 (ox,oz) 射向 (tx,tz)，途中會不會先打到看得到的牆／家具，或另一個還活著的躲藏者。
+  shotLane(ox, oz, tx, tz, ignoreId, allowProp) {
+    const dx = tx - ox, dz = tz - oz, dist = Math.hypot(dx, dz);
+    if (dist < 0.8) return { clear: false, why: 'near' };
+    const d = new THREE.Vector3(dx, 0, dz).normalize();
+    const o = new THREE.Vector3(ox, 0.85, oz);
+    ray.set(o, d); ray.far = dist - 0.35;
+    const hs = ray.intersectObjects([...pickProps, ...wallMeshes], false).find(h => {
+      if (!visibleChain(h.object)) return false;
+      const k = h.object.userData.kind;
+      if (k === 'ceiling' || k === 'floor') return false;
+      if (allowProp != null && h.object.userData.id === allowProp) return false;
+      return true;
+    });
+    if (hs) return { clear: false, why: 'geom', kind: hs.object.userData.kind, id: hs.object.userData.id ?? null, at: +hs.distance.toFixed(2) };
+    for (const q of (G.s?.players || [])) {
+      if (!q.alive || q.role !== 'hider' || q.id === ignoreId) continue;
+      const t = (q.x - ox) * d.x + (q.z - oz) * d.z;
+      if (t > 0.3 && t < dist - 0.3 && Math.hypot(q.x - (ox + d.x * t), q.z - (oz + d.z * t)) < 0.75) return { clear: false, why: 'player', id: q.id };
+    }
+    return { clear: true, dist: +dist.toFixed(2) };
+  },
   BODY_H: CFG.BODY_H,
   propCols: i => propObjs[i]?.userData.cols || [],
   compoundOf: n => modelCache[n]?.cols || [],

@@ -128,19 +128,21 @@ if (!SKIP_SWEEP) {
   const sofa = PROPS.findIndex(pr => pr[0] === 'loungeSofa'), bed = PROPS.findIndex(pr => pr[0] === 'bedDouble');
   const rows = [];
   for (const n of ['chairCushion', 'pottedPlant', 'cabinetBedDrawerTable']) {
-    const id = pick(n); if (id < 0) continue; const pr = PROPS[id];
+    const id = pick(n); if (id < 0) continue;
+    const live = await B.evaluate(i => __ph.propPos(i), id);
     for (const [ox, oz] of [[.8, 0], [-.8, 0], [0, .8], [0, -.8], [.6, .6], [-.6, -.6]]) {
-      await B.evaluate(([x, z]) => __ph.teleport(x, z, 0), [pr[1] + ox, pr[2] + oz]); await B.waitForTimeout(250);
+      await B.evaluate(([x, z]) => __ph.teleport(x, z, 0), [live[0] + ox, live[2] + oz]); await B.waitForTimeout(250);
       await B.evaluate(i => __ph.tryTransform(i), id); if (await waitFor(B, i => __ph.me()?.prop === i, id, 2500).then(() => true, () => false)) break; }
     if (!(await B.evaluate(i => __ph.me()?.prop === i, id))) { rows.push([n, 'transform failed']); continue; }
     await B.waitForTimeout(1600);
-    for (const tgt of [sofa, bed]) { const tp = PROPS[tgt], ry = tp[3] * Math.PI / 180, fx = Math.sin(ry), fz = Math.cos(ry);
-      const r = await B.evaluate(async ([x, z, tx, tz]) => { __ph.teleport(x, z, 0); __ph.lookAt(tx, tz, .45); __ph.holdMove.iz = -1; const ys = []; const t0 = performance.now();
+    for (const tgt of [sofa, bed]) {
+      const r = await B.evaluate(async (tgt) => {
+        const pr = __ph.PROPS[tgt], pos = __ph.propPos(tgt), ry = pr[3] * Math.PI / 180, fx = Math.sin(ry), fz = Math.cos(ry);
+        __ph.teleport(pos[0] + fx * 1.6, pos[2] + fz * 1.6, 0); __ph.lookAt(pos[0], pos[2], .45); __ph.holdMove.iz = -1; const ys = []; const t0 = performance.now();
         await new Promise(res => { const f = () => { const t = performance.now() - t0; if (t > 700) ys.push(__ph.local.y); if (t > 2000) return res(); requestAnimationFrame(f); }; f(); }); __ph.holdMove.iz = 0;
         let osc = 0, last = 0; for (let k = 1; k < ys.length; k++) { const d = ys[k] - ys[k - 1]; if (Math.abs(d) < .004) continue; const sg = Math.sign(d); if (last && sg !== last) osc++; last = sg; }
-        __ph.cam.yaw += Math.PI; await new Promise(r => setTimeout(r, 300)); const occ = __ph.camOccluded(); __ph.cam.yaw -= Math.PI; return { osc, cam: occ?.by || null, r: +__ph.playR().toFixed(2) }; },
-        [tp[1] + fx * 1.6, tp[2] + fz * 1.6, tp[1], tp[2]]);
-      rows.push([n, tp[0], r]); }
+        __ph.cam.yaw += Math.PI; await new Promise(r => setTimeout(r, 300)); const occ = __ph.camOccluded(); __ph.cam.yaw -= Math.PI; return { osc, cam: occ?.by || null, r: +__ph.playR().toFixed(2) }; }, tgt);
+      rows.push([n, PROPS[tgt][0], r]); }
   }
   console.log(JSON.stringify(rows));
   ok('變身成家具走進沙發／床：不抖動、鏡頭不被不透明家具擋住', rows.length >= 6 && rows.every(r => typeof r[2] === 'object' && r[2].osc < 2 && !r[2].cam), JSON.stringify(rows));
