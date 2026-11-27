@@ -77,8 +77,19 @@ ok('鬼出生在電梯廳', pA.role === 'seeker' && Math.hypot(pA.sx - M.seekers
 ok('躲藏者出生在開放辦公區', [pB, pC].every(q => M.hiders.some(h => Math.hypot(h[0] - q.sx, h[1] - q.sz) < .01)));
 const counts = () => Promise.all(pages.map(p => p.evaluate(() => __ph.activePropCount())));
 ok('所有人看到同樣多的福貓辦公室家具', (await counts()).every(n => n === M.N), JSON.stringify(await counts()));
-for (const p of [B, C]) { const a = await p.evaluate(() => [__ph.local.x, __ph.local.z]); await p.evaluate(() => { __ph.holdMove.iz = -1; }); await p.waitForTimeout(600); await p.evaluate(() => { __ph.holdMove.iz = 0; }); const c = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
-  ok('可以走動 ' + p._n, Math.hypot(c[0] - a[0], c[1] - a[1]) > .4, JSON.stringify([a, c])); }
+for (const p of [B, C]) {
+  const a = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
+  let c = a;
+  // 洗牌後預設面向可能頂到家具，換個方向再走，確認人沒有被卡死。
+  for (const [iz, ix] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    await p.evaluate(([iz, ix]) => { __ph.holdMove.iz = iz; __ph.holdMove.ix = ix; }, [iz, ix]);
+    await p.waitForTimeout(450);
+    await p.evaluate(() => { __ph.holdMove.iz = 0; __ph.holdMove.ix = 0; });
+    c = await p.evaluate(() => [__ph.local.x, __ph.local.z]);
+    if (Math.hypot(c[0] - a[0], c[1] - a[1]) > .4) break;
+  }
+  ok('可以走動 ' + p._n, Math.hypot(c[0] - a[0], c[1] - a[1]) > .4, JSON.stringify([a, c]));
+}
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= M.L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .3);
 const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 413.5, 262), geode: lid('geode', 448, 119.2),

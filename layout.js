@@ -278,7 +278,7 @@ function geomOK(box, room, staticCols, doors, spawns, occupied) {
     if (overlap(box, c, 0.02)) return false;
   }
   for (const d of doors) if (overlap(box, d, 0)) return false;
-  for (const s of spawns) if (hitCircle(box, s[0], s[1], 1.2)) return false;
+  for (const s of spawns) if (hitCircle(box, s[0], s[1], 1.55)) return false;
   for (const o of occupied) if (o && overlap(box, o, 0.07)) return false;
   return true;
 }

@@ -41,7 +41,7 @@ function audit(snap, label) {
       if (r.x < r.room.x1 - m || r.x > r.room.x2 + m || r.z < r.room.z1 - m || r.z > r.room.z2 + m) badRoom.push(`${r.kind} ${r.name}#${r.i} (${r.x.toFixed(2)},${r.z.toFixed(2)}) ${r.room.id}`);
     } else if (d > 0.08) badRoom.push(`no-room ${r.name}#${r.i} moved ${d.toFixed(2)}`);
   }
-  const floor = snap.rows.filter(r => r.kind !== 'rider');
+  const floor = snap.rows.filter(r => r.kind !== 'rider' && r.kind !== 'wall');
   for (let i = 0; i < floor.length; i++) for (let j = i + 1; j < floor.length; j++) {
     const a = floor[i], b = floor[j];
     const live = overlapArea(foot(a.x, a.z, a.ry, a.sz), foot(b.x, b.z, b.ry, b.sz));

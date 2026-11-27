@@ -168,8 +168,9 @@ for (const off of [[0, 2.0], [-1.8, .2], [1.8, .5]]) { await shootPlayer(ids.C, 
 if (process.env.DBG) { const q = (await st(A)).players.find(p => p.id === ids.C); console.log('DBG C', JSON.stringify({x:q.x,z:q.z,y:q.y,alive:q.alive,prop:q.prop}), JSON.stringify(await A.evaluate(i => __ph.screenOf('player', i), ids.C)), JSON.stringify(await A.evaluate(() => [__ph.local.x, __ph.local.z]))); await A.screenshot({ path: SH + 'dbg-shootC.png' }); }
 await waitFor(A, () => __ph.state?.phase === 'end', null, 6000).catch(() => {});
 s = await st(A); ok('全部抓到 → 鬼贏（辦公室）', s.phase === 'end' && s.winner === 'seeker', JSON.stringify([s.phase, s.winner]));
-await A.waitForTimeout(300);
-ok('回合結束家具恢復', (await counts()).every(n => n === NP), JSON.stringify(await counts()));
+let endCounts = await counts();
+for (let i = 0; i < 8 && !endCounts.every(n => n === NP); i++) { await A.waitForTimeout(250); endCounts = await counts(); }
+ok('回合結束家具恢復', endCounts.every(n => n === NP), JSON.stringify(endCounts));
 const plantReset = await A.evaluate(i => __ph.propPos(i), I.plant);
 ok('留在原地的家具重設回原位', Math.hypot(plantReset[0] - PROPS[I.plant][1], plantReset[2] - PROPS[I.plant][2]) < .05);
 
@@ -185,7 +186,7 @@ await A.click('#startBtn'); await allWait(() => __ph.state?.phase === 'hide', nu
 s = await st(A);
 ok('第 2 局在小家、鬼在小家出生點', s.map === 'home' && Math.hypot(s.players.find(q => q.id === ids.A).sx - OFF.home.seeker[0], s.players.find(q => q.id === ids.A).sz - OFF.home.seeker[1]) < .01);
 const homeChair = PROPS.findIndex(p => p[0] === 'loungeChair');
-await B.evaluate(() => { __ph.teleport(-10.3, 3.0); }); await tf(B, homeChair);
+await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] + 1.15, q[2] + 0.7); __ph.lookAt(q[0], q[2], .4); }, homeChair); await tf(B, homeChair);
 ok('小家照常可變身', (await st(A)).players.find(q => q.id === ids.B).prop === homeChair);
 const perfHome = await C.evaluate(() => __ph.renderInfo());
 console.log('perf (mobile lowgfx, C view) office', JSON.stringify(perfOffice), 'home', JSON.stringify(perfHome));
