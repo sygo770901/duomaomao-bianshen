@@ -188,20 +188,48 @@ const counts = () => Promise.all(pages.map(p => p.evaluate(() => __ph.visiblePro
 const visAll = id => Promise.all(pages.map(p => p.evaluate(i => __ph.propVisible(i), id)));
 async function aimAndTransform(p, propId, standAt) {
   const pitch = (PROPS[propId][4] || 0) > 1 ? -0.4 : 0.5;
-  // 家具每局會在原房間裡換位置：站點用「原本相對這件家具的偏移」套到現在的位置上。
-  await p.evaluate(([id, sx, sz, pitch]) => {
+  // 家具每局會在原房間裡換位置。先試原本的相對站位；若那邊穿進牆或跑出地圖，就改站到這件家具旁邊走得進去的空位。
+  await p.evaluate(async ([id, sx, sz, pitch]) => {
     const q = __ph.propPos(id), pr = __ph.PROPS[id];
     let dx = sx - pr[1], dz = sz - pr[2];
-    const len = Math.hypot(dx, dz) || 1, d = Math.min(1.7, len);
-    __ph.teleport(q[0] + dx / len * d, q[2] + dz / len * d);
+    const len = Math.hypot(dx, dz) || 1;
+    const dirs = [[dx / len, dz / len]];
+    for (let k = 0; k < 8; k++) dirs.push([Math.sin(k * Math.PI / 4), Math.cos(k * Math.PI / 4)]);
+    const clear = (px, pz) => { const c = __ph.collideAt(px, pz, 0.28, 0); return Math.hypot(c[0] - px, c[1] - pz) < 0.08; };
+    const cands = [];
+    const prefer = [q[0] + dirs[0][0] * Math.min(1.7, len), q[2] + dirs[0][1] * Math.min(1.7, len)];
+    if (clear(prefer[0], prefer[1])) cands.push(prefer);
+    for (const [ux, uz] of dirs) for (const dist of [1.5, 1.2, 2.0, 2.4]) {
+      const nx = q[0] + ux * dist, nz = q[2] + uz * dist;
+      if (clear(nx, nz)) cands.push([nx, nz]);
+    }
+    if (!cands.length) cands.push(prefer);
+    let chosen = cands[0];
+    for (const [x, z] of cands) {
+      __ph.teleport(x, z, 0);
+      __ph.lookAt(q[0], q[2], pitch);
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const sp = __ph.screenOf('prop', id);
+      const u = sp && sp.onScreen ? __ph.pickAt(sp.x, sp.y) : null;
+      if (u && u.kind === 'prop' && u.id === id) { chosen = [x, z]; break; }
+    }
+    __ph.teleport(chosen[0], chosen[1], 0);
     __ph.lookAt(q[0], q[2], pitch);
   }, [propId, standAt[0], standAt[1], pitch]);
   await p.waitForTimeout(300);
   const sp = await p.evaluate(id => __ph.screenOf('prop', id), propId);
   if (p._touch) await p.touchscreen.tap(sp.x, sp.y); else await p.mouse.click(sp.x, sp.y);
   await p.waitForTimeout(150);
-  const tgt = await p.evaluate(() => __ph.target);
-  if (p._touch) await p.tap('#tfBtn'); else await p.keyboard.press('KeyF');
+  // 準心每一幀都會重算。讀到目標和按下變身如果隔著一次 await，慢機器上準心可能先清掉，F 就沒送出。
+  // 在同一個回合裡讀目標並按 F，仍要求點到的就是這一件（沒點到就不會變身）。
+  const tgt = await p.evaluate(() => {
+    const id = __ph.target;
+    if (id != null && !document.getElementById('tfBtn')?.disabled) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF', key: 'f', bubbles: true }));
+    }
+    return id;
+  });
   await p.waitForTimeout(500);
   return tgt;
 }
@@ -557,13 +585,14 @@ if (seeker._touch) await seeker.touchscreen.tap(wsp.x, wsp.y); else await seeker
 await A.waitForTimeout(1500); s = await st(A); ok('顏料打到牆/地板只扣 2 血', s.hp === 88, 'hp=' + s.hp);
 // 閃避：鬼對 H2 開槍，H2 馬上移開 → 沒抓到
 const P2now = (await st(A)).players.find(p => p.id === h2);
-await aimFrom([P2now.x, -1.6], [P2now.x, P2now.z]);
-await fireAt('player', h2); await H2.evaluate(([x, z]) => __ph.teleport(x, z), [P2now.x + 2.2, P2now.z]);
+// 兩人都在走道上。沿著走道開槍會先打到另一個人，所以從北側退開，飛行中再橫移。
+await aimFrom([P2now.x, P2now.z + 4.5], [P2now.x, P2now.z]);
+await fireAt('player', h2); await H2.evaluate(([x, z]) => __ph.teleport(x, z, 0), [P2now.x + 3, P2now.z]);
 await A.waitForTimeout(1600); s = await st(A);
 ok('顏料飛行中躲開 → 不算抓到', s.players.find(p => p.id === h2).alive === true, 'hp=' + s.hp);
 // 命中：H1（盆栽）不動 → 被抓、盆栽放回原位
-const h1now = await H1.evaluate(() => [__ph.local.x, __ph.local.z]);
-await aimFrom([h1now[0] - 2.4, h1now[1]], h1now);
+const h1now = (await st(A)).players.find(p => p.id === h1);
+await aimFrom([h1now.x - 4.5, h1now.z], [h1now.x, h1now.z]);
 await fireAt('player', h1); await seeker.waitForTimeout(80);
 s = await st(A); ok('剛發射時還沒抓到（要等顏料飛到）', s.players.find(p => p.id === h1).alive === true);
 await A.waitForTimeout(900); s = await st(A);

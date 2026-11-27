@@ -2104,17 +2104,18 @@ function update(dt) {
 
   // 躲的人：準心瞄準家具
   if (p && p.role === 'hider' && p.alive && (s.phase === 'hide' || s.phase === 'seek')) {
-    if (target != null && !inRange(target)) target = null;
+    if (target != null && !inRange(target)) { target = null; aimHoldUntil = 0; }
     if (!tapTargetUntil || performance.now() > tapTargetUntil) {
       ray.setFromCamera({ x: 0, y: 0 }, camera); ray.far = 30;
-      const h = ray.intersectObjects(pickProps, false).find(h => inRange(h.object.userData.id));
-      target = h ? h.object.userData.id : null;
+      const h = ray.intersectObjects(pickProps, false).find(h => inRange(h.object.userData.id) && visibleChain(h.object) && propMap(h.object.userData.id) === curMap);
+      if (h) { target = h.object.userData.id; aimHoldUntil = performance.now() + 350; }
+      else if (performance.now() > aimHoldUntil) target = null;
     }
   } else target = null;
   if (target != null) { if (highlight.userData.t !== target) { highlight.box.setFromObject(propObjs[target]); highlight.box.expandByScalar(.05); highlight.userData.t = target; } highlight.visible = true; }
   else { highlight.visible = false; highlight.userData.t = null; }
 }
-let tapTargetUntil = 0;
+let tapTargetUntil = 0, aimHoldUntil = 0;
 let debugCam = null;
 const highlight = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color('#ffe14d')); highlight.visible = false; scene.add(highlight);
 function inRange(id) { const o = propObjs[id]; if (!o || o.userData.smashed || (G.s?.smashed || []).includes(id)) return false; return Math.hypot(o.position.x - local.x, o.position.z - local.z) < CFG.TF_RANGE + o.userData.radius * .5; }
@@ -2126,7 +2127,23 @@ function doTransform() {
   if (target == null) return toast('先對準或點一下附近的家具');
   if (target === p.prop) return toast('你已經是這個了');
   if ((s.smashed || []).includes(target)) return toast('這件家具已經被破壞了');
-  send({ t: 'tf', id: target });
+  const id = target;
+  // 位置封包約 66ms 才送一次。變身的距離是用主機上的座標算的，
+  // 若這包還帶著「上一件家具」的編號，主機會整包丟掉，人就停在舊位子，下一件變身會被判太遠。
+  // 先用目前的編號把人送到站的地方，再變身；變身送出後立刻改成本地編號，後續移動才不會被丟掉。
+  send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0 });
+  send({ t: 'tf', id });
+  const g = propObjs[id], pr = PROPS[id];
+  if (!g || !pr || propMap(id) !== (s.map || 'home')) return;
+  local.pp = id;
+  local.x = g.position.x; local.z = g.position.z; local.py = g.rotation.y;
+  const wall = WALL_PROP.has(pr[0]);
+  local.y = g.position.y || 0; local.vy = 0; local.mounted = wall; local.grounded = !wall;
+  if (wall) {
+    const nx = Math.sin(local.py), nz = Math.cos(local.py);
+    local.mntAxis = Math.abs(nx) > Math.abs(nz) ? 'x' : 'z';
+    local.mntPos = local.mntAxis === 'x' ? local.x : local.z; local.mntNx = nx; local.mntNz = nz;
+  } else local.mntAxis = null;
 }
 let lastSmashAt = 0;
 function smashAim() {
@@ -2399,7 +2416,14 @@ function pickAt(cx, cy) {
   ray.setFromCamera(ndc, camera); ray.far = 60;
   const objs = [...pickProps, ...wallMeshes];
   for (const [id, v] of visuals) if (id !== net.myId) v.root.traverse(o => o.isMesh && objs.push(o));
-  const hits = ray.intersectObjects(objs, false).filter(h => visibleChain(h.object));
+  const hits = ray.intersectObjects(objs, false).filter(h => {
+    if (!visibleChain(h.object)) return false;
+    const k = h.object.userData.kind;
+    // 鏡頭貼到天花板時，射線會先打到天花板，點不到前面的家具。
+    if (k === 'ceiling') return false;
+    if (h.distance < 0.15) return false;
+    return true;
+  });
   lastPickPoint = hits[0] ? hits[0].point.clone() : ray.ray.at(40, new THREE.Vector3());
   return hits[0]?.object.userData || null;
 }
