@@ -644,14 +644,23 @@ await A.waitForTimeout(300);
 ok('被抓後他取代的盆栽放回原位', (await visAll(I.plant)).every(v => v === true));
 ok('被抓的人看到通知/觀戰', (await H1.textContent('#role')).includes('被抓'), await H1.textContent('#role'));
 ok('遊戲還沒結束（還有 1 人）', s.phase === 'seek');
-// 抓最後一個 H2。畫面射線得先打到人，主機才不會把顏料算在中間的家具上。
-for (let n = 0; n < 6; n++) {
-  const lastAim = await clearAim(H2, h2);
-  if (!lastAim) break;
-  await aimFrom([lastAim.x, lastAim.z], [lastAim.tx, lastAim.tz]);
+// 抓最後一個 H2。先把他放到走道上打得到的空位，避免洗牌家具擋在彈道上。
+let h2dead = false;
+for (const hx of [-8, -4, 0, 4, 6]) {
+  await H2.evaluate((x) => __ph.teleport(x, -1.5, 0), hx);
+  await A.waitForTimeout(200);
+  const lane = await seeker.evaluate((id) => {
+    const q = __ph.state.players.find(p => p.id === id); if (!q) return null;
+    const x = q.x, z = q.z + 4.2;
+    const c = __ph.collideAt(x, z, 0.3, 0);
+    if (Math.hypot(c[0] - x, c[1] - z) > 0.2) return null;
+    return __ph.shotLane(x, z, q.x, q.z, id).clear ? [x, z, q.x, q.z] : null;
+  }, h2);
+  if (!lane) continue;
+  await aimFrom([lane[0], lane[1]], [lane[2], lane[3]]);
   await fireAt('player', h2);
-  const ended = await waitFor(A, () => __ph.state?.phase === 'end', null, 2200).then(() => true, () => false);
-  if (ended) break;
+  h2dead = await waitFor(A, (id) => __ph.state.players.find(p => p.id === id)?.alive === false, h2, 1800).then(() => true, () => false);
+  if (h2dead) break;
 }
 s = await st(A); ok('全部抓到 → 鬼贏', s.phase === 'end' && s.winner === 'seeker', JSON.stringify([s.phase, s.winner, s.reason]));
 await A.waitForTimeout(300);
