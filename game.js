@@ -2,12 +2,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js?v=19';
-import * as OFFICE from './office.js?v=19';
-import * as LUCKY from './lucky.js?v=19';
-import { buildCompound, refineWithHeightfield } from './compound.js?v=19';
-import { createDiceTable } from './dice3d.js?v=19';
-import { computeLayout, classifyIndex } from './layout.js?v=19';
+import { LocalPeer } from './localnet.js?v=21';
+import * as OFFICE from './office.js?v=21';
+import * as LUCKY from './lucky.js?v=21';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=21';
+import { createDiceTable } from './dice3d.js?v=21';
+import { computeLayout, classifyIndex } from './layout.js?v=21';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -1400,11 +1400,15 @@ function hostOnMsg(from, m) {
       if (H.phase === 'seek') { H.endAt = Date.now() + Math.max(0, +m.ms || 0); H.chirpAt = 0; }
       break; }
     case 'testsmashready': if (Q.get('net') === 'local') H.lastSmash[from] = 0; break;
-    case 'p': // 位置；pp = 用戶端認知的變身家具，跟主機不一致時（剛變身）先忽略，避免舊位置蓋掉
-      if (!(p.role === 'seeker' && H.phase === 'hide') && (m.pp ?? -1) === p.prop) {
+    case 'p': { // 位置。剛變身前送出的舊座標（pp 還是上一件）不要蓋掉新位置；變身之後送出的座標即使 pp 還沒更新也要收下。
+      const seekBlind = p.role === 'seeker' && H.phase === 'hide';
+      const ppOk = (m.pp ?? -1) === p.prop;
+      const stale = !ppOk && p.tfAt && m.now && m.now < p.tfAt;
+      if (!seekBlind && !stale) {
         p.x = +m.x || 0; p.z = +m.z || 0; p.ry = +m.ry || 0; p.py = +m.py || 0; p.y = +m.y || 0; p.mnt = m.mnt ? 1 : 0;
         if (m.bumps) for (const b of m.bumps) hostApplyBump(p, b[0], b[1], b[2], b[3]);
-      } break;
+      }
+      break; }
     case 'tf': {
       const pr = PROPS[m.id]; if (!playing || p.role !== 'hider' || !p.alive || !pr || p.prop === m.id || propMap(m.id) !== (H.map || 'home')) break;
       if (H.smashed && H.smashed[m.id]) break;
@@ -1423,7 +1427,7 @@ function hostOnMsg(from, m) {
         if (!H.moved) H.moved = {};
         H.moved[p.prop] = { x: p.x, z: p.z, y: p.y || 0, ry: p.py || 0, tip: 0, mnt: p.mnt ? 1 : 0 };
       }
-      p.prop = m.id; p.tf++; p.x = cx; p.z = cz; p.py = cry; p.y = cy; p.mnt = cmnt ? 1 : 0; break; }
+      p.prop = m.id; p.tf++; p.tfAt = Date.now(); p.x = cx; p.z = cz; p.py = cry; p.y = cy; p.mnt = cmnt ? 1 : 0; break; }
     case 'hshot': { // 躲藏者噴漆：主機模擬飛行，打中鬼才糊畫面
       if (H.phase !== 'seek' || p.role !== 'hider' || !p.alive) break;
       const now = Date.now(); if (now - (H.lastTaunt[from] || 0) < CFG.TAUNT_CD - 80) break; H.lastTaunt[from] = now;
@@ -2039,7 +2043,7 @@ function update(dt) {
   if (net.myId && performance.now() - local.lastSend > 66) {
     local.lastSend = performance.now();
     if (p) { const bumps = pendingBumps.size ? [...pendingBumps.values()] : undefined; pendingBumps.clear();
-      send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, bumps }); }
+      send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now(), bumps }); }
   }
   updatePaint(dt);
 
@@ -2131,7 +2135,7 @@ function doTransform() {
   // 位置封包約 66ms 才送一次。變身的距離是用主機上的座標算的，
   // 若這包還帶著「上一件家具」的編號，主機會整包丟掉，人就停在舊位子，下一件變身會被判太遠。
   // 先用目前的編號把人送到站的地方，再變身；變身送出後立刻改成本地編號，後續移動才不會被丟掉。
-  send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0 });
+  send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now() });
   send({ t: 'tf', id });
   const g = propObjs[id], pr = PROPS[id];
   if (!g || !pr || propMap(id) !== (s.map || 'home')) return;
@@ -2886,7 +2890,12 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   hasGun: id => !!visuals.get(id)?.buddy.getObjectByName('gun'), splatCount: () => splats.length, projCount: () => projectiles.size,
   disguiseYaw: id => visuals.get(id)?.disguise?.rotation.y ?? null, disguisePos: id => { const v = visuals.get(id); return v ? [v.root.position.x, v.root.position.z] : null; },
   setDebugCam(c) { debugCam = c; },
-  teleport(x, z, y) { local.x = x; local.z = z; if (y != null) { local.y = y; local.vy = 0; local.grounded = y <= .05; } },
+  teleport(x, z, y) {
+    local.x = x; local.z = z;
+    if (y != null) { local.y = y; local.vy = 0; local.grounded = y <= .05; }
+    // 測試用瞬移要立刻告訴主機。背景分頁的畫面迴圈可能先不跑，閃避的座標就送不出去。
+    if (Q.get('net') === 'local' && net.myId) send({ t: 'p', x: local.x, z: local.z, y: local.y, ry: local.ry, py: local.py, pp: local.pp, mnt: local.mounted ? 1 : 0, now: Date.now() });
+  },
   screenOf(kind, id) { const o = kind === 'prop' ? propObjs[id] : visuals.get(id)?.root; if (!o) return null;
     const bb = new THREE.Box3(); o.traverse(m => { if (m.isMesh && visibleChain(m)) bb.expandByObject(m); }); const c = bb.getCenter(new THREE.Vector3()); c.project(camera);
     return { x: (c.x + 1) / 2 * innerWidth, y: (1 - c.y) / 2 * innerHeight, onScreen: Math.abs(c.x) < 1 && Math.abs(c.y) < 1 && c.z < 1 }; },
@@ -2916,6 +2925,28 @@ window.__ph = { net, get state() { return G.s; }, me, evLog, local, cam, propObj
   get curMap() { return curMap; }, HOME_PROP_N, LUCKY_START, LUCKY_N: LUCKY.PROPS.length, LUCKY_ROOMS: LUCKY.ROOMS, propMap, MAPS,
   mapGroupVisible: id => !!MAPS[id]?.group.visible, activePropCount: () => propObjs.filter((g, i) => propMap(i) === curMap && g.visible).length,
   colliderCount: () => colliders.length, collideAt: (x, z, r, y) => collide(x, z, y ?? 0, r ?? .33),
+  // 從 (ox,oz) 射向 (tx,tz)，途中會不會先打到看得到的牆／家具，或另一個還活著的躲藏者。
+  shotLane(ox, oz, tx, tz, ignoreId, allowProp) {
+    const dx = tx - ox, dz = tz - oz, dist = Math.hypot(dx, dz);
+    if (dist < 0.8) return { clear: false, why: 'near' };
+    const d = new THREE.Vector3(dx, 0, dz).normalize();
+    const o = new THREE.Vector3(ox, 0.85, oz);
+    ray.set(o, d); ray.far = dist - 0.35;
+    const hs = ray.intersectObjects([...pickProps, ...wallMeshes], false).find(h => {
+      if (!visibleChain(h.object)) return false;
+      const k = h.object.userData.kind;
+      if (k === 'ceiling' || k === 'floor') return false;
+      if (allowProp != null && h.object.userData.id === allowProp) return false;
+      return true;
+    });
+    if (hs) return { clear: false, why: 'geom', kind: hs.object.userData.kind, id: hs.object.userData.id ?? null, at: +hs.distance.toFixed(2) };
+    for (const q of (G.s?.players || [])) {
+      if (!q.alive || q.role !== 'hider' || q.id === ignoreId) continue;
+      const t = (q.x - ox) * d.x + (q.z - oz) * d.z;
+      if (t > 0.3 && t < dist - 0.3 && Math.hypot(q.x - (ox + d.x * t), q.z - (oz + d.z * t)) < 0.75) return { clear: false, why: 'player', id: q.id };
+    }
+    return { clear: true, dist: +dist.toFixed(2) };
+  },
   BODY_H: CFG.BODY_H,
   propCols: i => propObjs[i]?.userData.cols || [],
   compoundOf: n => modelCache[n]?.cols || [],

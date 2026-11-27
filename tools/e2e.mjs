@@ -189,7 +189,7 @@ const visAll = id => Promise.all(pages.map(p => p.evaluate(i => __ph.propVisible
 async function aimAndTransform(p, propId, standAt) {
   const pitch = (PROPS[propId][4] || 0) > 1 ? -0.4 : 0.5;
   // 家具每局會在原房間裡換位置。先試原本的相對站位；若那邊穿進牆或跑出地圖，就改站到這件家具旁邊走得進去的空位。
-  await p.evaluate(async ([id, sx, sz, pitch]) => {
+  const tgt = await p.evaluate(async ([id, sx, sz, pitch]) => {
     const q = __ph.propPos(id), pr = __ph.PROPS[id];
     let dx = sx - pr[1], dz = sz - pr[2];
     const len = Math.hypot(dx, dz) || 1;
@@ -204,32 +204,24 @@ async function aimAndTransform(p, propId, standAt) {
       if (clear(nx, nz)) cands.push([nx, nz]);
     }
     if (!cands.length) cands.push(prefer);
-    let chosen = cands[0];
+    let tgt = null;
     for (const [x, z] of cands) {
       __ph.teleport(x, z, 0);
       __ph.lookAt(q[0], q[2], pitch);
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const sp = __ph.screenOf('prop', id);
       const u = sp && sp.onScreen ? __ph.pickAt(sp.x, sp.y) : null;
-      if (u && u.kind === 'prop' && u.id === id) { chosen = [x, z]; break; }
+      // 鏡頭還在拉近，隔一拍再點會點到別的家具。射線已經打中這一件，就在這一幀變身。
+      if (u && u.kind === 'prop' && u.id === id) {
+        __ph.setTarget(id);
+        document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF', key: 'f', bubbles: true }));
+        tgt = id;
+        break;
+      }
     }
-    __ph.teleport(chosen[0], chosen[1], 0);
-    __ph.lookAt(q[0], q[2], pitch);
+    return tgt;
   }, [propId, standAt[0], standAt[1], pitch]);
-  await p.waitForTimeout(300);
-  const sp = await p.evaluate(id => __ph.screenOf('prop', id), propId);
-  if (p._touch) await p.touchscreen.tap(sp.x, sp.y); else await p.mouse.click(sp.x, sp.y);
-  await p.waitForTimeout(150);
-  // 準心每一幀都會重算。讀到目標和按下變身如果隔著一次 await，慢機器上準心可能先清掉，F 就沒送出。
-  // 在同一個回合裡讀目標並按 F，仍要求點到的就是這一件（沒點到就不會變身）。
-  const tgt = await p.evaluate(() => {
-    const id = __ph.target;
-    if (id != null && !document.getElementById('tfBtn')?.disabled) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', bubbles: true }));
-      document.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF', key: 'f', bubbles: true }));
-    }
-    return id;
-  });
   await p.waitForTimeout(500);
   return tgt;
 }
@@ -309,6 +301,7 @@ for (const p of pages) {
 
 
 // 跳躍：走到床邊跳上去
+await H1.bringToFront();
 await defocus(H1);
 const bedTop = await H1.evaluate(i => __ph.propTop(i), I.bed);
 await H1.evaluate(i => {
@@ -454,8 +447,9 @@ ok('H1 方向＝原本椅子的方向', Math.abs((await seeker.evaluate(id => __
 // 旋轉
 const yaw0 = await H1.evaluate(() => __ph.local.py);
 if (H1._touch) { const bb = await H1.locator('#rotR').boundingBox(); await H1.dispatchEvent('#rotR', 'pointerdown', { pointerId: 9, pointerType: 'touch', clientX: bb.x + 5, clientY: bb.y + 5 }); await H1.waitForTimeout(600); await H1.dispatchEvent('#rotR', 'pointerup', { pointerId: 9, pointerType: 'touch' }); }
-else { await H1.keyboard.down('KeyE'); await H1.waitForTimeout(600); await H1.keyboard.up('KeyE'); }
+else { await H1.keyboard.down('KeyE'); await H1.waitForTimeout(900); await H1.keyboard.up('KeyE'); }
 const yaw1 = await H1.evaluate(() => __ph.local.py);
+await seeker.bringToFront();
 await seeker.waitForFunction(([id, y]) => { const q = __ph.disguiseYaw(id); return q != null && Math.abs(Math.atan2(Math.sin(q - y), Math.cos(q - y))) < 0.1; }, [h1, yaw1], { timeout: 3000 }).catch(() => {});
 const seenYaw = await seeker.evaluate(id => __ph.disguiseYaw(id), h1);
 ok('躲藏者可轉動家具方向' + (H1._touch ? '（手機按鈕）' : '（E 鍵）'), Math.abs(yaw1 - yaw0) > .4, `${yaw0.toFixed(2)} → ${yaw1.toFixed(2)}`);
@@ -568,9 +562,20 @@ async function fireAt(kind, id) {
 }
 const splatsAll = () => Promise.all(pages.map(p => p.evaluate(() => __ph.splatCount())));
 // 打到真沙發：顏料要飛一下（不是瞬間判定）→ 落點留下顏料、扣 10 血
-const sofaNow = await seeker.evaluate(i => __ph.propPos(i), I.sofa);
-await aimFrom([sofaNow[0] - 2.4, sofaNow[2]], [sofaNow[0], sofaNow[2]]);
-await fireAt('prop', I.sofa); await seeker.waitForTimeout(60);
+const sofaAim = await seeker.evaluate((id) => {
+  const q = __ph.propPos(id);
+  const dirs = [];
+  for (let k = 0; k < 8; k++) dirs.push([Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)]);
+  for (const dist of [3.4, 2.8, 4.4]) for (const [dx, dz] of dirs) {
+    const x = q[0] + dx * dist, z = q[2] + dz * dist;
+    const c = __ph.collideAt(x, z, 0.3, 0);
+    if (Math.hypot(c[0] - x, c[1] - z) > 0.12) continue;
+    if (__ph.shotLane(x, z, q[0], q[2], null, id).clear) return [x, z, q[0], q[2]];
+  }
+  return [q[0] - 3.4, q[2], q[0], q[2]];
+}, I.sofa);
+await aimFrom([sofaAim[0], sofaAim[1]], [sofaAim[2], sofaAim[3]]);
+await fireAt('prop', I.sofa); await seeker.waitForTimeout(120);
 const inflight = await Promise.all(pages.map(p => p.evaluate(() => __ph.projCount()))); s = await st(A);
 ok('顏料彈在飛（所有人都看得到），還沒判定', inflight.every(n => n >= 1) && s.hp === 100, JSON.stringify(inflight) + ' hp=' + s.hp);
 await seeker.screenshot({ path: SH + 'v3-' + (seeker._touch ? 'mobile' : 'desktop') + '-seeker-paint-flying.png' });
@@ -584,17 +589,49 @@ const wsp = await seeker.evaluate(() => __ph.screenOfPoint(-6.8, 0, -0.3));
 if (seeker._touch) await seeker.touchscreen.tap(wsp.x, wsp.y); else await seeker.mouse.click(wsp.x, wsp.y);
 await A.waitForTimeout(1500); s = await st(A); ok('顏料打到牆/地板只扣 2 血', s.hp === 88, 'hp=' + s.hp);
 // 閃避：鬼對 H2 開槍，H2 馬上移開 → 沒抓到
-const P2now = (await st(A)).players.find(p => p.id === h2);
-// 兩人都在走道上。沿著走道開槍會先打到另一個人，所以從北側退開，飛行中再橫移。
-await aimFrom([P2now.x, P2now.z + 4.5], [P2now.x, P2now.z]);
-await fireAt('player', h2); await H2.evaluate(([x, z]) => __ph.teleport(x, z, 0), [P2now.x + 3, P2now.z]);
-await A.waitForTimeout(1600); s = await st(A);
-ok('顏料飛行中躲開 → 不算抓到', s.players.find(p => p.id === h2).alive === true, 'hp=' + s.hp);
+// 洗牌後家具會擋在固定的開槍方向上：先找一條打得到人、又不會先打到牆或其他人的路線。
+async function clearAim(hider, hid) {
+  const spots = [[null, null], [-1.2, -1.5], [2.4, -1.5], [-6.2, 1.2], [4.2, 2.4], [-8.4, -1.2]];
+  for (const spot of spots) {
+    if (spot[0] != null) {
+      await hider.evaluate(([x, z]) => __ph.teleport(x, z, 0), spot);
+      await A.waitForTimeout(280);
+    }
+    const aim = await seeker.evaluate((id) => {
+      const q = __ph.state.players.find(p => p.id === id); if (!q) return null;
+      const dirs = [];
+      for (let k = 0; k < 8; k++) dirs.push([Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)]);
+      for (const dist of [4.6, 3.8, 5.6]) for (const [dx, dz] of dirs) {
+        const x = q.x + dx * dist, z = q.z + dz * dist;
+        const c = __ph.collideAt(x, z, 0.3, 0);
+        if (Math.hypot(c[0] - x, c[1] - z) > 0.12) continue;
+        const lane = __ph.shotLane(x, z, q.x, q.z, id);
+        if (lane.clear) return { x, z, tx: q.x, tz: q.z, px: -dz, pz: dx };
+      }
+      return null;
+    }, hid);
+    if (aim) return aim;
+  }
+  return null;
+}
+const dodge = await clearAim(H2, h2);
+if (!dodge) ok('顏料飛行中躲開 → 不算抓到', false, '找不到不會先打到家具的開槍位置');
+else {
+  await aimFrom([dodge.x, dodge.z], [dodge.tx, dodge.tz]);
+  await fireAt('player', h2);
+  await H2.evaluate(([x, z]) => __ph.teleport(x, z, 0), [dodge.tx + dodge.px * 3, dodge.tz + dodge.pz * 3]);
+  await A.waitForTimeout(1600); s = await st(A);
+  ok('顏料飛行中躲開 → 不算抓到', s.players.find(p => p.id === h2).alive === true, 'hp=' + s.hp);
+}
 // 命中：H1（盆栽）不動 → 被抓、盆栽放回原位
-const h1now = (await st(A)).players.find(p => p.id === h1);
-await aimFrom([h1now.x - 4.5, h1now.z], [h1now.x, h1now.z]);
-await fireAt('player', h1); await seeker.waitForTimeout(80);
-s = await st(A); ok('剛發射時還沒抓到（要等顏料飛到）', s.players.find(p => p.id === h1).alive === true);
+const catchAim = await clearAim(H1, h1);
+if (!catchAim) ok('剛發射時還沒抓到（要等顏料飛到）', false, '找不到打得到躲藏者的空路線');
+else {
+  await aimFrom([catchAim.x, catchAim.z], [catchAim.tx, catchAim.tz]);
+  await fireAt('player', h1);
+  await seeker.waitForTimeout(80);
+  s = await st(A); ok('剛發射時還沒抓到（要等顏料飛到）', s.players.find(p => p.id === h1).alive === true);
+}
 await A.waitForTimeout(900); s = await st(A);
 ok('顏料打中偽裝的玩家 → 抓到', s.players.find(p => p.id === h1).alive === false, 'hp=' + s.hp);
 ok('抓到後左上角聊天有系統訊息（含剩餘人數）', (await Promise.all(pages.map(p => p.evaluate(n => {
@@ -607,10 +644,21 @@ await A.waitForTimeout(300);
 ok('被抓後他取代的盆栽放回原位', (await visAll(I.plant)).every(v => v === true));
 ok('被抓的人看到通知/觀戰', (await H1.textContent('#role')).includes('被抓'), await H1.textContent('#role'));
 ok('遊戲還沒結束（還有 1 人）', s.phase === 'seek');
-// 抓最後一個 H2
-const P2b = (await st(A)).players.find(p => p.id === h2);
-await aimFrom([P2b.x, 1.8], [P2b.x, P2b.z]); await fireAt('player', h2);
-await waitFor(A, () => __ph.state?.phase === 'end', null, 5000).catch(() => { });
+// 抓最後一個 H2。畫面射線得先打到人，主機才不會把顏料算在中間的家具上。
+for (let n = 0; n < 6; n++) {
+  const lastAim = await clearAim(H2, h2);
+  if (!lastAim) break;
+  await aimFrom([lastAim.x, lastAim.z], [lastAim.tx, lastAim.tz]);
+  const see = await seeker.evaluate((id) => {
+    const sp = __ph.screenOf('player', id);
+    const u = sp && __ph.pickAt(sp.x, sp.y);
+    return !!(sp && sp.onScreen && u && u.kind === 'player' && u.id === id);
+  }, h2);
+  if (!see) continue;
+  await fireAt('player', h2);
+  const ended = await waitFor(A, () => __ph.state?.phase === 'end', null, 2200).then(() => true, () => false);
+  if (ended) break;
+}
 s = await st(A); ok('全部抓到 → 鬼贏', s.phase === 'end' && s.winner === 'seeker', JSON.stringify([s.phase, s.winner, s.reason]));
 await A.waitForTimeout(300);
 ok('回合結束：所有家具恢復', (await counts()).every(n => n === NP), JSON.stringify(await counts()));

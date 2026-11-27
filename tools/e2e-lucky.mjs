@@ -60,7 +60,7 @@ const freeAt = (x, z) => A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z)
 const spawnFree = []; for (const [x, z] of [...M.hiders, ...M.seekers, M.lobbyAt]) spawnFree.push(await freeAt(x, z));
 ok('出生點／大廳位置都不卡在家具或牆裡', spawnFree.every(Boolean), JSON.stringify(spawnFree));
 const K = .066, X = px => (px - 250) * K, Z = py => (py - 209) * K;
-const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [433, 241], 設備: [460, 252.5], 草皮辦公區: [445, 146] };
+const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [433, 241], 設備: [460, 252.5], 草皮辦公區: [434, 130] };
 const doorFree = {}; for (const [k, [px, py]] of Object.entries(doors)) doorFree[k] = await freeAt(X(px), Z(py));
 ok('每個門口都能通過', Object.values(doorFree).every(Boolean), JSON.stringify(doorFree));
 const wallBlock = await A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z); return Math.hypot(q[0] - x, q[1] - z) > .05; }, [X(211), Z(275)]);
@@ -92,7 +92,7 @@ for (const p of [B, C]) {
 }
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= M.L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .3);
-const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 413.5, 262), geode: lid('geode', 448, 119.2),
+const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 346, 280), geode: lid('geode', 448, 119.2),
   metal: lid('metalChair', 246, 268), white: lid('whiteDesk', 462, 140) };
 if (I.chair < 0) I.chair = PROPS.findIndex((p, i) => i >= M.L && p[0] === 'meshChair' && Math.hypot(p[1] - X(262.5), p[2] - Z(245.6)) < 1.0);
 ok('找到測試用福貓家具', Object.values(I).every(i => i >= M.L), JSON.stringify(I));
@@ -133,7 +133,19 @@ await B.evaluate(([x, z]) => { __ph.teleport(x, z, 0); }, [X(291), Z(205)]);
 
 // 6. 找人：破壞小件（網椅）會碎、長桌不會；抓人 → 鬼贏
 await waitFor(A, () => __ph.state?.phase === 'seek', null, 30000);
-await A.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0], q[2] + 1.4); __ph.lookAt(q[0], q[2], .3); __ph.resetSmashCd(); }, I.chair);
+await A.evaluate(i => {
+  const q = __ph.propPos(i);
+  const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [0.7, 0.7], [-0.7, 0.7]];
+  let x = q[0], z = q[2] + 1.4;
+  for (const dist of [1.3, 1.7, 2.1]) for (const [dx, dz] of dirs) {
+    const nx = q[0] + dx * dist, nz = q[2] + dz * dist;
+    const c = __ph.collideAt(nx, nz, 0.3, 0);
+    if (Math.hypot(c[0] - nx, c[1] - nz) > 0.15) continue;
+    x = nx; z = nz;
+    if (__ph.shotLane(nx, nz, q[0], q[2], null, i).clear) { __ph.teleport(x, z, 0); __ph.lookAt(q[0], q[2], .25); __ph.resetSmashCd(); return; }
+  }
+  __ph.teleport(x, z, 0); __ph.lookAt(q[0], q[2], .25); __ph.resetSmashCd();
+}, I.chair);
 await A.waitForTimeout(300);
 const n0 = await A.evaluate(() => __ph.evLog.filter(e => e.k === 'smash').length);
 await A.evaluate(() => __ph.doSmash());

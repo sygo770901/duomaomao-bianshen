@@ -12,7 +12,7 @@ const FIXED = new Set([
   'cabinetTelevision', 'lockers', 'vendingMachine', 'snackCabinet', 'waterCooler', 'waterDispenser',
   'piano', 'pingPong', 'foosball', 'arcade', 'gridPanel',
   'woodCounter', 'woodSink', 'kitchenIsland', 'wireRack', 'woodWardrobe',
-  'treasureCounter', 'copier',
+  'treasureCounter', 'copier', 'glassFridge', 'luckyReception',
 ]);
 // 吊在天花板上的，不跟著桌子走，也不佔地面。
 const HANGING = new Set(['goldPendant']);
