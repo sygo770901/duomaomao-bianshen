@@ -60,10 +60,10 @@ const freeAt = (x, z) => A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z)
 const spawnFree = []; for (const [x, z] of [...M.hiders, ...M.seekers, M.lobbyAt]) spawnFree.push(await freeAt(x, z));
 ok('出生點／大廳位置都不卡在家具或牆裡', spawnFree.every(Boolean), JSON.stringify(spawnFree));
 const K = .066, X = px => (px - 250) * K, Z = py => (py - 209) * K;
-const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [433, 241], 設備: [460, 252.5], 小會議室: [434, 124.5] };
+const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [433, 241], 設備: [460, 252.5], 草皮辦公區: [445, 146] };
 const doorFree = {}; for (const [k, [px, py]] of Object.entries(doors)) doorFree[k] = await freeAt(X(px), Z(py));
 ok('每個門口都能通過', Object.values(doorFree).every(Boolean), JSON.stringify(doorFree));
-const wallBlock = await A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z); return Math.hypot(q[0] - x, q[1] - z) > .05; }, [X(250), Z(297)]);
+const wallBlock = await A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z); return Math.hypot(q[0] - x, q[1] - z) > .05; }, [X(211), Z(275)]);
 ok('白磚牆／玻璃牆會擋人', wallBlock);
 const lineFree = []; for (let py = 312; py >= 250; py -= 3) lineFree.push(await freeAt(X(305), Z(py)));
 ok('鬼從電梯廳直直走進入口區不會卡住', lineFree.every(Boolean), JSON.stringify(lineFree.map(Number).join('')));
@@ -81,8 +81,8 @@ for (const p of [B, C]) { const a = await p.evaluate(() => [__ph.local.x, __ph.l
   ok('可以走動 ' + p._n, Math.hypot(c[0] - a[0], c[1] - a[1]) > .4, JSON.stringify([a, c])); }
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= M.L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .3);
-const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 413.5, 262), geode: lid('geode', 217.5, 268),
-  bistro: lid('bistroChair', 444, 198), tolix: lid('tolixChair', 443, 130.5) };
+const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 413.5, 262), geode: lid('geode', 448, 119.2),
+  metal: lid('metalChair', 246, 268), white: lid('whiteDesk', 462, 140) };
 if (I.chair < 0) I.chair = PROPS.findIndex((p, i) => i >= M.L && p[0] === 'meshChair' && Math.hypot(p[1] - X(262.5), p[2] - Z(245.6)) < 1.0);
 ok('找到測試用福貓家具', Object.values(I).every(i => i >= M.L), JSON.stringify(I));
 // 複合碰撞：長桌下方可鑽（桌面高 ~.72）＋椅子不是整塊
@@ -90,12 +90,12 @@ const deskCols = await A.evaluate(i => __ph.propCols(i), I.desk), chairCols = aw
 ok('長桌是桌面＋桌腳的複合碰撞', deskCols.length >= 2 && deskCols.some(c => c.y1 > .5), JSON.stringify(deskCols.map(c => [+c.y1.toFixed(2), +c.y2.toFixed(2)])));
 ok('網椅是多塊碰撞（座位＋椅背）', chairCols.length >= 2, chairCols.length);
 
-// 4. 變身：X 背咖啡椅 → 壁掛冷氣（掛牆）→ 福貓雕像
+// 4. 變身：金屬椅 → 壁掛冷氣（掛牆）→ 福貓雕像
 async function tf(p, id) { await p.waitForTimeout(450); await p.evaluate(i => __ph.setTarget(i), id); await press(p, 'KeyF', 'tfBtn'); await p.waitForTimeout(600); }
-const bp = PROPS[I.bistro];
+const bp = PROPS[I.metal];
 await B.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, .4); }, [bp[1] - 1.2, bp[2] + .6, bp[1], bp[2]]);
-await tf(B, I.bistro);
-ok('變身成 X 背咖啡椅', (await st(A)).players.find(q => q.id === ids.B).prop === I.bistro);
+await tf(B, I.metal);
+ok('變身成金屬椅', (await st(A)).players.find(q => q.id === ids.B).prop === I.metal);
 const acP = PROPS[I.ac];
 await C.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, -.3); }, [acP[1], acP[2] + 1.6, acP[1], acP[2]]);
 await tf(C, I.ac);
@@ -125,7 +125,7 @@ await B.evaluate(([x, z]) => { __ph.teleport(x, z, 0); }, [X(291), Z(205)]);
 
 // 6. 找人：破壞小件（網椅）會碎、長桌不會；抓人 → 鬼贏
 await waitFor(A, () => __ph.state?.phase === 'seek', null, 30000);
-const ch = PROPS[I.tolix];
+const ch = PROPS[I.chair];
 await A.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, .3); __ph.resetSmashCd(); }, [ch[1], ch[2] + 1.4, ch[1], ch[2]]);
 await A.waitForTimeout(300);
 const n0 = await A.evaluate(() => __ph.evLog.filter(e => e.k === 'smash').length);
@@ -133,7 +133,7 @@ await A.evaluate(() => __ph.doSmash());
 await waitFor(A, n => __ph.evLog.filter(e => e.k === 'smash').length > n, n0, 5000).catch(() => {});
 await A.waitForTimeout(400);
 const tableId = PROPS.findIndex((p, i) => i >= M.L && p[0] === 'ovalTable');
-ok('破壞：白色鐵椅碎掉', await A.evaluate(i => __ph.isSmashed(i), I.tolix), JSON.stringify(await A.evaluate(() => __ph.smashedIds())));
+ok('破壞：網椅碎掉', await A.evaluate(i => __ph.isSmashed(i), I.chair), JSON.stringify(await A.evaluate(() => __ph.smashedIds())));
 ok('破壞：橢圓會議桌（大件）不會碎', !(await A.evaluate(i => __ph.isSmashed(i), tableId)));
 async function shootPlayer(id, standOff) {
   const q = (await st(A)).players.find(p => p.id === id);
