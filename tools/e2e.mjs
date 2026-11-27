@@ -188,7 +188,14 @@ const counts = () => Promise.all(pages.map(p => p.evaluate(() => __ph.visiblePro
 const visAll = id => Promise.all(pages.map(p => p.evaluate(i => __ph.propVisible(i), id)));
 async function aimAndTransform(p, propId, standAt) {
   const pitch = (PROPS[propId][4] || 0) > 1 ? -0.4 : 0.5;
-  await p.evaluate(([x, z, px, pz, pitch]) => { __ph.teleport(x, z); __ph.lookAt(px, pz, pitch); }, [...standAt, PROPS[propId][1], PROPS[propId][2], pitch]);
+  // 家具每局會在原房間裡換位置：站點用「原本相對這件家具的偏移」套到現在的位置上。
+  await p.evaluate(([id, sx, sz, pitch]) => {
+    const q = __ph.propPos(id), pr = __ph.PROPS[id];
+    let dx = sx - pr[1], dz = sz - pr[2];
+    const len = Math.hypot(dx, dz) || 1, d = Math.min(1.7, len);
+    __ph.teleport(q[0] + dx / len * d, q[2] + dz / len * d);
+    __ph.lookAt(q[0], q[2], pitch);
+  }, [propId, standAt[0], standAt[1], pitch]);
   await p.waitForTimeout(300);
   const sp = await p.evaluate(id => __ph.screenOf('prop', id), propId);
   if (p._touch) await p.touchscreen.tap(sp.x, sp.y); else await p.mouse.click(sp.x, sp.y);
@@ -276,7 +283,18 @@ for (const p of pages) {
 // 跳躍：走到床邊跳上去
 await defocus(H1);
 const bedTop = await H1.evaluate(i => __ph.propTop(i), I.bed);
-await H1.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz, .2); }, [3.6, 3.35, 3.6, 5.0]);
+await H1.evaluate(i => {
+  const q = __ph.propPos(i), ry = __ph.PROPS[i][3] * Math.PI / 180;
+  let x = q[0], z = q[2] - 1.55;
+  const free = (px, pz) => { const c = __ph.collideAt(px, pz, .2, 0); return Math.hypot(c[0] - px, c[1] - pz) < .05; };
+  if (!free(x, z)) {
+    outer: for (const ang of [Math.PI, 0, 1.2, -1.2, Math.PI / 2, -Math.PI / 2]) for (const dist of [1.45, 1.15, 1.85]) {
+      const nx = q[0] + Math.sin(ry + ang) * dist, nz = q[2] + Math.cos(ry + ang) * dist;
+      if (free(nx, nz)) { x = nx; z = nz; break outer; }
+    }
+  }
+  __ph.teleport(x, z, 0); __ph.lookAt(q[0], q[2], .2);
+}, I.bed);
 await H1.waitForTimeout(200);
 if (H1._touch) { await H1.tap('#jumpBtn'); await H1.evaluate(() => { /* 手機同時往前 */ }); await joystick(H1, 0, -50, 700); }
 else { await H1.keyboard.down('KeyW'); await H1.keyboard.press('Space'); await H1.waitForTimeout(800); await H1.keyboard.up('KeyW'); }
@@ -391,18 +409,19 @@ await A.waitForTimeout(350);
 const frameAfter = await A.evaluate(i => __ph.propPos(i), I.frame);
 ok('牆掛飾換成別的家具後留在牆上新位置', (await visAll(I.frame)).every(v => v === true) && Math.hypot(frameAfter[2] - frameDropPos[2], frameAfter[1] - frameDropPos[1]) < .35, JSON.stringify([frameDropPos, frameAfter]));
 
+const chairAt = await A.evaluate(i => __ph.propPos(i), I.chair);
 const tg1 = await aimAndTransform(H1, I.chair, [-10.3, 3.0]);
 s = await st(A); let P1 = s.players.find(p => p.id === h1);
 ok('H1 點家具選取目標', tg1 === I.chair, 'target=' + tg1); ok('H1 變身成功（第 1 次）', P1.prop === I.chair && P1.tf === 1, JSON.stringify([P1.prop, P1.tf]));
 await A.waitForTimeout(300);
 // 各分頁（軟體算圖很慢）套用房主狀態的時間不一，改成輪詢等到所有人都看到椅子消失、位置到位，再判定（原本固定等 300ms 偶發失敗）
 for (let k = 0; k < 40; k++) { const vs = await visAll(I.chair), cs = await counts(), dp = await seeker.evaluate(id => __ph.disguisePos(id), h1);
-  if (vs.every(v => v === false) && cs.every(n => n === NP - 2) && dp && Math.hypot(dp[0] - PROPS[I.chair][1], dp[1] - PROPS[I.chair][2]) < .3) break; await A.waitForTimeout(100); }
+  if (vs.every(v => v === false) && cs.every(n => n === NP - 2) && dp && Math.hypot(dp[0] - chairAt[0], dp[1] - chairAt[2]) < .3) break; await A.waitForTimeout(100); }
 await seeker.waitForFunction(([id, y]) => { const q = __ph.disguiseYaw(id); return q != null && Math.abs(q - y) < .05; }, [h1, PROPS[I.chair][3] * Math.PI / 180], { timeout: 3000 }).catch(() => {});
 ok('變身＝取代：原本那張椅子在所有人畫面消失', (await visAll(I.chair)).every(v => v === false), JSON.stringify(await visAll(I.chair)));
 ok('家具總數不變（少 1 件真的，多 1 件假的）', (await counts()).every(n => n === NP - 2), JSON.stringify(await counts()));
 const dpos = await seeker.evaluate(id => __ph.disguisePos(id), h1);
-ok('H1 站到原本椅子的位置', Math.hypot(dpos[0] - PROPS[I.chair][1], dpos[1] - PROPS[I.chair][2]) < .3, JSON.stringify(dpos));
+ok('H1 站到原本椅子的位置', !!dpos && Math.hypot(dpos[0] - chairAt[0], dpos[1] - chairAt[2]) < .3, JSON.stringify(dpos));
 ok('H1 方向＝原本椅子的方向', Math.abs((await seeker.evaluate(id => __ph.disguiseYaw(id), h1)) - PROPS[I.chair][3] * Math.PI / 180) < .05);
 // 旋轉
 const yaw0 = await H1.evaluate(() => __ph.local.py);
@@ -412,7 +431,7 @@ const yaw1 = await H1.evaluate(() => __ph.local.py);
 await seeker.waitForFunction(([id, y]) => { const q = __ph.disguiseYaw(id); return q != null && Math.abs(Math.atan2(Math.sin(q - y), Math.cos(q - y))) < 0.1; }, [h1, yaw1], { timeout: 3000 }).catch(() => {});
 const seenYaw = await seeker.evaluate(id => __ph.disguiseYaw(id), h1);
 ok('躲藏者可轉動家具方向' + (H1._touch ? '（手機按鈕）' : '（E 鍵）'), Math.abs(yaw1 - yaw0) > .4, `${yaw0.toFixed(2)} → ${yaw1.toFixed(2)}`);
-ok('轉動方向同步到鬼的畫面', Math.abs(Math.atan2(Math.sin(seenYaw - yaw1), Math.cos(seenYaw - yaw1))) < .1, `本地 ${yaw1.toFixed(2)} / 鬼看到 ${seenYaw.toFixed(2)}`);
+ok('轉動方向同步到鬼的畫面', seenYaw != null && Math.abs(Math.atan2(Math.sin(seenYaw - yaw1), Math.cos(seenYaw - yaw1))) < .1, `本地 ${yaw1.toFixed(2)} / 鬼看到 ${seenYaw == null ? 'null' : seenYaw.toFixed(2)}`);
 // 鎖定：預設鎖定 → 轉鏡頭不影響家具；解鎖 → 家具跟鏡頭
 await H1.evaluate(() => { __ph.cam.yaw += 1.2; }); await H1.waitForTimeout(200);
 ok('鎖定時轉鏡頭家具不會轉', Math.abs((await H1.evaluate(() => __ph.local.py)) - yaw1) < .01);
@@ -445,16 +464,18 @@ ok('第 2 次變身：玩具車被取代', (await visAll(I.toy)).every(v => v ==
 ok('家具總數仍 = 原本 - 2', (await counts()).every(n => n === NP - 2), JSON.stringify(await counts()));
 
 // 第 3 次變身成燈（無限次數）：移動到 [-12.6, 3.8] 直接選旁邊立燈 → 玩具車留在 [-12.6, 3.8]，燈光跟著玩家亮著！
-await H1.evaluate(() => __ph.teleport(-12.6, 3.8, 0));
+const lampAt = await A.evaluate(i => __ph.propPos(i), I.lamp);
+const lampDrop = [lampAt[0] + 1.05, lampAt[2] + 0.35];
+await H1.evaluate(([x, z]) => __ph.teleport(x, z, 0), lampDrop);
 await A.waitForTimeout(250);
 await H1.evaluate(i => __ph.setTarget(i), I.lamp);
 if (H1._touch) await H1.tap('#tfBtn'); else await H1.keyboard.press('KeyF');
 await H1.waitForTimeout(500);
 s = await st(A); P1 = s.players.find(p => p.id === h1);
 ok('第 3 次變身成功（無限次數）', P1.prop === I.lamp && P1.tf === 3, JSON.stringify([P1.prop, P1.tf]));
-await seeker.waitForFunction(([i, x, z]) => { const q = __ph.propPos(i); return Math.hypot(q[0] - x, q[2] - z) < 0.4; }, [I.toy, -12.6, 3.8], { timeout: 3000 }).catch(() => {});
+await seeker.waitForFunction(([i, x, z]) => { const q = __ph.propPos(i); return Math.hypot(q[0] - x, q[2] - z) < 0.4; }, [I.toy, lampDrop[0], lampDrop[1]], { timeout: 3000 }).catch(() => {});
 const toyDrop = await seeker.evaluate(i => __ph.propPos(i), I.toy);
-ok('第 3 次變身：玩具車留在剛才的位置', (await visAll(I.toy)).every(v => v === true) && Math.hypot(toyDrop[0] - (-12.6), toyDrop[2] - 3.8) < .4, JSON.stringify(toyDrop));
+ok('第 3 次變身：玩具車留在剛才的位置', (await visAll(I.toy)).every(v => v === true) && Math.hypot(toyDrop[0] - lampDrop[0], toyDrop[2] - lampDrop[1]) < .4, JSON.stringify(toyDrop));
 ok('變身按鈕保持可用（無限次）', !(await H1.isDisabled('#tfBtn')) && (await H1.textContent('#tfBtn')).includes('變身'));
 const lampLitAll = await Promise.all(pages.map(pg => pg.evaluate(id => __ph.disguiseHasLight(id) && __ph.disguisePointLightCount(id) >= 1, h1)));
 ok('變成燈後燈光亮著並同步到所有人', lampLitAll.every(Boolean), JSON.stringify(lampLitAll));
@@ -507,8 +528,8 @@ await seeker.screenshot({ path: SH + 'v3-seeker-overlay.png' });
 await A.waitForTimeout(4200);
 ok('顏料遮罩約 3–4 秒後消退', (await ov(seeker)) < 0.08, 'op=' + (await ov(seeker)));
 // 恢復位置，後面的抓人／閃避測試才準
-await H1.evaluate(([x, z]) => __ph.teleport(x, z, 0), [PROPS[I.plant][1], PROPS[I.plant][2]]);
-await H2.evaluate(([x, z]) => __ph.teleport(x, z, 0), [PROPS[I.bench][1], PROPS[I.bench][2]]);
+await H1.evaluate(() => __ph.teleport(-1.2, -1.5, 0));
+await H2.evaluate(() => __ph.teleport(3.2, -1.5, 0));
 await seeker.evaluate(([x, z]) => { __ph.teleport(x, z, 0); }, skPos);
 
 async function aimFrom(standAt, lookXZ) { await seeker.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz); }, [...standAt, ...lookXZ]); await seeker.waitForTimeout(400); }
@@ -519,7 +540,8 @@ async function fireAt(kind, id) {
 }
 const splatsAll = () => Promise.all(pages.map(p => p.evaluate(() => __ph.splatCount())));
 // 打到真沙發：顏料要飛一下（不是瞬間判定）→ 落點留下顏料、扣 10 血
-await aimFrom([-8.2, 1.5], [PROPS[I.sofa][1], PROPS[I.sofa][2]]);
+const sofaNow = await seeker.evaluate(i => __ph.propPos(i), I.sofa);
+await aimFrom([sofaNow[0] - 2.4, sofaNow[2]], [sofaNow[0], sofaNow[2]]);
 await fireAt('prop', I.sofa); await seeker.waitForTimeout(60);
 const inflight = await Promise.all(pages.map(p => p.evaluate(() => __ph.projCount()))); s = await st(A);
 ok('顏料彈在飛（所有人都看得到），還沒判定', inflight.every(n => n >= 1) && s.hp === 100, JSON.stringify(inflight) + ' hp=' + s.hp);
@@ -540,7 +562,8 @@ await fireAt('player', h2); await H2.evaluate(([x, z]) => __ph.teleport(x, z), [
 await A.waitForTimeout(1600); s = await st(A);
 ok('顏料飛行中躲開 → 不算抓到', s.players.find(p => p.id === h2).alive === true, 'hp=' + s.hp);
 // 命中：H1（盆栽）不動 → 被抓、盆栽放回原位
-await aimFrom([-10.2, -4.4], [PROPS[I.plant][1], PROPS[I.plant][2]]);
+const h1now = await H1.evaluate(() => [__ph.local.x, __ph.local.z]);
+await aimFrom([h1now[0] - 2.4, h1now[1]], h1now);
 await fireAt('player', h1); await seeker.waitForTimeout(80);
 s = await st(A); ok('剛發射時還沒抓到（要等顏料飛到）', s.players.find(p => p.id === h1).alive === true);
 await A.waitForTimeout(900); s = await st(A);

@@ -71,6 +71,7 @@ async function tf(p, id) { await p.waitForTimeout(450); await p.evaluate(i => __
 await B.evaluate(([x, z]) => { __ph.teleport(x, z); __ph.lookAt(-8.5, 1.0, .4); }, [-7.6, 1.6]);
 await B.evaluate(() => __ph.setTarget(0)); await press(B, 'KeyF', 'tfBtn'); await B.waitForTimeout(500);
 ok('不能變成另一張地圖（小家）的家具', (await st(A)).players.find(q => q.id === ids.B).prop === -1);
+await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] + 0.95, q[2] + 0.55); __ph.lookAt(q[0], q[2], .4); }, I.plant);
 await tf(B, I.plant);
 s = await st(A); let PB = s.players.find(q => q.id === ids.B);
 ok('辦公室變身成功（盆栽）', PB.prop === I.plant, JSON.stringify([PB.prop, PB.tf]));
@@ -79,6 +80,8 @@ ok('變身＝取代：原本盆栽所有人看不到', (await visAll(I.plant)).e
 // 無限變身：走一段再換成懶骨頭 → 盆栽留在剛才位置
 await B.evaluate(() => { __ph.lookAt(-8.5, 3.5, .3); __ph.holdMove.iz = -1; }); await B.waitForTimeout(450); await B.evaluate(() => { __ph.holdMove.iz = 0; });
 await B.waitForTimeout(300);
+await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] + 0.75, q[2] + 0.55); __ph.lookAt(q[0], q[2], .3); }, I.bean);
+await B.waitForTimeout(200);
 const plantDrop = await B.evaluate(() => [__ph.local.x, __ph.local.z]);
 await tf(B, I.bean);
 s = await st(A); PB = s.players.find(q => q.id === ids.B);
@@ -89,7 +92,7 @@ ok('上一件（盆栽）留在剛才的位置，所有人同步', plantNow.ever
 ok('家具總數 = 原本 - 1（盆栽回來，懶骨頭被取代）', (await counts()).every(n => n === NP - 1), JSON.stringify(await counts()));
 
 // 4. 燈：C 變成立燈 → 帶著燈光
-await C.evaluate(([x, z]) => { __ph.teleport(x, z); __ph.lookAt(-3.6, 2.1, .4); }, [-4.0, 1.2]);
+await C.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] - 0.9, q[2] - 0.7); __ph.lookAt(q[0], q[2], .4); }, I.lamp);
 await tf(C, I.lamp);
 s = await st(A); let PC = s.players.find(q => q.id === ids.C);
 ok('辦公室立燈變身成功', PC.prop === I.lamp);
@@ -111,9 +114,11 @@ await press(C, 'Space', 'jumpBtn'); await C.waitForTimeout(1100);
 ok('跳躍後從牆上下來', (await C.evaluate(() => __ph.mounted)) === false);
 
 // 6. 跳躍：跳上窗邊辦公桌
-const deskP = PROPS[I.desk]; const deskTop = await B.evaluate(i => __ph.propTop(i), I.desk);
-const dA = deskP[3] * Math.PI / 180, px = -Math.cos(dA), pz = Math.sin(dA); // 從沒有馬克杯的那一側（桌子短邊）跳上去
-await B.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z, 0); __ph.lookAt(lx, lz, .2); }, [deskP[1] + px * 1.35, deskP[2] + pz * 1.35, deskP[1], deskP[2]]);
+const deskTop = await B.evaluate(i => __ph.propTop(i), I.desk);
+await B.evaluate(i => {
+  const q = __ph.propPos(i), pr = __ph.PROPS[i], a = pr[3] * Math.PI / 180, px = -Math.cos(a), pz = Math.sin(a);
+  __ph.teleport(q[0] + px * 1.35, q[2] + pz * 1.35, 0); __ph.lookAt(q[0], q[2], .2);
+}, I.desk);
 await B.waitForTimeout(200);
 await B.evaluate(() => { __ph.holdMove.iz = -1; }); await B.keyboard.press('Space'); await B.waitForTimeout(800); await B.evaluate(() => { __ph.holdMove.iz = 0; });
 const landY = await B.evaluate(() => __ph.local.y);
@@ -137,7 +142,7 @@ const sofa1 = await A.evaluate(i => __ph.propPos(i), I.sofa);
 ok('大家具（沙發）撞不動', Math.hypot(sofa1[0] - sofa0[0], sofa1[2] - sofa0[2]) < .05);
 // B 回到懶骨頭狀態留在原地（給鬼抓）；C 變成懶骨頭外的東西：換成盆栽 (C 在白板附近，用印表機)
 const printer = PROPS.findIndex((p, i) => i >= OFF.N && p[0] === 'printer' && Math.hypot(p[1] + 1.0, p[2] + 2.65) < .3);
-await C.evaluate(([x, z]) => { __ph.teleport(x, z); }, [-1.0, -3.4]);
+await C.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0] + 1.0, q[2] + 0.55); __ph.lookAt(q[0], q[2], .3); }, printer);
 await tf(C, printer);
 ok('C 改變成印表機', (await st(A)).players.find(q => q.id === ids.C).prop === printer);
 await C.evaluate(() => { __ph.teleport(-7.0, 1.0); }); // 變成印表機後走到中庭空地（鬼才看得到）
@@ -152,7 +157,7 @@ async function shootPlayer(id, standOff) {
   await A.evaluate(([x, z, lx, lz]) => { __ph.teleport(x, z); __ph.lookAt(lx, lz); }, [...near(q, standOff), q.x, q.z]); await A.waitForTimeout(400);
   const sp = await A.evaluate(i => __ph.screenOf('player', i), id); await A.mouse.click(sp.x, sp.y);
 }
-await shootPlayer(ids.B, [0, 2.0]); await A.waitForTimeout(1200);
+for (const off of [[0, 2.0], [0, -2.0], [2.0, .3], [-2.0, .3]]) { await shootPlayer(ids.B, off); await A.waitForTimeout(900); if (!(await st(A)).players.find(q => q.id === ids.B).alive) break; }
 s = await st(A); ok('鬼在辦公室抓到躲藏者 B', s.players.find(q => q.id === ids.B).alive === false, 'hp=' + s.hp);
 ok('辦公室抓到後聊天訊息顯示剩 1 人', await A.evaluate(() => {
   const t = (document.getElementById('chatFeed')?.textContent || '') + (document.getElementById('chatLog')?.textContent || '');
