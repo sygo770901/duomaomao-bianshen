@@ -53,8 +53,8 @@ const WALLS = [
   [[335, 268], [335, 297], 'glassB'],
   // 儲藏室／設備間
   [[421, 241], [421, 306], 'in'], [[421, 241], [487, 241], 'in', { gaps: [[3, 20]] }], [[460, 241], [460, 306], 'in', { gaps: [[3, 20]] }],
-  // 草皮辦公區：西牆「LUCKY CAT.」草皮＋門（標註 1，平面圖 434,130）；斜牆東端開口（P07）；東牆草皮面在 shell（標註 2）
-  [[434, 112], [434, 146], 'grass', { gaps: [[9, 27]] }], [[434, 146], [487, 178], 'in', { gaps: [[46, 62]] }],
+  // 草皮辦公區：僅南側內牆（靠辦公桌）為「LUCKY CAT.」草皮；西牆白牆＋門；東牆白牆。斜牆東端開口保留（P07）
+  [[434, 112], [434, 146], 'in', { gaps: [[9, 27]] }], [[434, 146], [487, 178], 'grass', { gaps: [[46, 62]] }],
 ];
 // 弧形外牆（左上辦公室，下半牆＋玻璃）
 const ARC = { c: [109.6, 205.9], r: 54, a0: Math.atan2(190 - 205.9, 58 - 109.6), a1: Math.atan2(152 - 205.9, 108 - 109.6), n: 9 };
@@ -525,8 +525,8 @@ export function buildLuckyShell(api) {
     for (const [g0, g1] of o.gaps || []) { const [x0, z0] = at(g0), [x1, z1] = at(g1); const len = Math.hypot(x1 - x0, z1 - z0);
       addGeo(glass ? '#1f1f1f' : (kind === 'out' ? C_OUT : C_IN), boxGeo(len, WH - 2.25, glass ? .08 : th, (x0 + x1) / 2, (WH + 2.25) / 2, (z0 + z1) / 2, ry)); }
   }
-  // 標註 2：東牆內側改為草皮（P02／P07 此側為白磚，衝突見 notes）
-  faces.push({ kind: 'grass', a: [X(487), Z(123)], b: [X(487), Z(183)], th: TO, s: -1 });
+  // 東牆內側：普通白牆（不再鋪草皮）
+  faces.push({ kind: 'white', a: [X(487), Z(123)], b: [X(487), Z(183)], th: TO, s: -1 });
   // 弧形外牆：下半段牆＋玻璃帶＋上方牆
   { const pts = arcPts().map(([a, b]) => [X(a), Z(b)]);
     for (let i = 0; i < pts.length - 1; i++) { const [ax, az] = pts[i], [bx, bz] = pts[i + 1]; const len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(-(bz - az), bx - ax), cx = (ax + bx) / 2, cz = (az + bz) / 2;
@@ -596,7 +596,8 @@ export function buildLuckyShell(api) {
     const nx = f.s * (bz - az) / len, nz = -f.s * (bx - ax) / len; // (dy,-dx) 方向
     const off = f.th / 2 + .012, cx = (ax + bx) / 2 + nx * off, cz = (az + bz) / 2 + nz * off;
     let canvas;
-    if (f.kind === 'brick') canvas = tex(LOW ? 512 : 768, LOW ? 400 : 600, (x, w, h) => {
+    if (f.kind === 'white') canvas = tex(64, 64, (x, w, h) => { x.fillStyle = '#f4f2ec'; x.fillRect(0, 0, w, h); });
+    else if (f.kind === 'brick') canvas = tex(LOW ? 512 : 768, LOW ? 400 : 600, (x, w, h) => {
       x.fillStyle = '#f7f5f0'; x.fillRect(0, 0, w, h); const bh = h / 30, bw = bh * 2.6;
       for (let r = 0; r < 30; r++) for (let c = -1; c < w / bw + 1; c++) { x.fillStyle = (r * 7 + c * 3) % 5 ? '#ffffff' : '#f0eee8'; x.fillRect(c * bw + (r % 2) * bw / 2 + 2, r * bh + 2, bw - 4, bh - 4); }
       const wh = h * (.06 / WH); for (let i = 0; i < 14; i++) { x.fillStyle = i % 2 ? '#eceae4' : '#e4e2dc'; x.fillRect(i * w / 14, h - wh, w / 14 - 2, wh); }
