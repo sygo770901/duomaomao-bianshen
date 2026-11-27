@@ -2,12 +2,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js?v=23';
-import * as OFFICE from './office.js?v=23';
-import * as LUCKY from './lucky.js?v=23';
-import { buildCompound, refineWithHeightfield } from './compound.js?v=23';
-import { createDiceTable } from './dice3d.js?v=23';
-import { computeLayout, classifyIndex } from './layout.js?v=23';
+import { LocalPeer } from './localnet.js?v=24';
+import * as OFFICE from './office.js?v=24';
+import * as LUCKY from './lucky.js?v=24';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=24';
+import { createDiceTable } from './dice3d.js?v=24';
+import { computeLayout, classifyIndex } from './layout.js?v=24';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
@@ -1302,7 +1302,8 @@ function hostSimShots() {
       const hung = pr && WALL_PROP.has(pr[0]) && !!q.mnt;
       const r = pr ? Math.max(.26, Math.max(sz.x, sz.z) * .45) : .24;
       const y0 = hung ? ((q.y || 0) - sz.y * .5) : (q.y || 0);
-      const y1 = hung ? ((q.y || 0) + sz.y * .5) : (y0 + (pr ? sz.y : .62));
+      // 矮家具（椅子、板凳）的可視中心比碰撞高度高，對準畫面中心時彈道會從盒子上方擦過。
+      const y1 = hung ? ((q.y || 0) + sz.y * .5) : (y0 + Math.max(pr ? sz.y : .62, 0.9));
       const fx = sh.pos.x - q.x, fz = sh.pos.z - q.z, A = sh.d.x ** 2 + sh.d.z ** 2, B = 2 * (fx * sh.d.x + fz * sh.d.z), C = fx * fx + fz * fz - r * r;
       let t = null; if (C <= 0) t = 0; else if (A > 1e-9) { const disc = B * B - 4 * A * C; if (disc >= 0) { const t1 = (-B - Math.sqrt(disc)) / (2 * A); if (t1 >= 0 && t1 <= step) t = t1; } }
       if (t == null) continue; const y = sh.pos.y + sh.d.y * t; if (y < y0 - .05 || y > y1 + .05) continue;

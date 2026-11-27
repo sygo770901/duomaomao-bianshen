@@ -39,7 +39,7 @@ const info = await A.evaluate(() => {
   const K = .066, X = px => (px - 250) * K, Z = py => (py - 209) * K;
   const near = (n, px, py, r = .45) => P.slice(L, L + N).some(p => p[0] === n && Math.hypot(p[1] - X(px), p[2] - Z(py)) < r);
   return { rooms, N, count, near: {
-    copier: near('copier', 206, 130),
+    copier: near('copier', 255.6, 147.9),
     cert: near('certFrame', 197, 128, .8),
     treasure: near('treasureCounter', 297.6, 263),
     geodeGrass: near('geode', 448, 119.2),
@@ -62,7 +62,7 @@ ok('晶洞會客室已改名且標確定', roomMap.party?.name === '晶洞會客
 ok('草皮辦公區已改名且標確定', roomMap.small?.name === '草皮辦公區' && roomMap.small?.sure === '1', JSON.stringify(roomMap.small));
 ok('福貓挖寶網房間名', roomMap.cafe?.name === '福貓挖寶網' && roomMap.cafe?.sure === '1', JSON.stringify(roomMap.cafe));
 ok('影印區改到窗邊西端並標確定', roomMap.copy?.name === '影印區' && roomMap.copy?.sure === '1', JSON.stringify(roomMap.copy));
-ok('影印機在老闆東牆外側', info.near.copier);
+ok('影印機在新標註位置', info.near.copier);
 ok('證書掛在老闆東牆辦公區側', info.near.cert);
 ok('福貓挖寶網櫃台在走廊', info.near.treasure);
 ok('紫晶洞在草皮辦公區窗邊', info.near.geodeGrass);
@@ -91,13 +91,17 @@ ok('靠窗有辦公桌椅', info.near.windowDesk);
 ok('北側內桌列仍在', info.near.upperDesk);
 ok('兩排之間有白色鐵網', info.near.aisleMesh);
 ok('南側桌列已連成一排', info.near.lowerDesk);
-ok('新白牆會擋人', await blocked(X(269), Z(180)));
+ok('新白牆會擋人', await blocked(X(240), Z(140)));
 ok('櫃台西側走道可過', await freeAt(X(250), Z(263)));
 ok('櫃台本身會擋原 x=305 走道', await blocked(X(298), Z(263)));
 ok('白牆以南大廳可繞行', await freeAt(X(269), Z(248)));
+ok('舊白牆位置已可通過', await freeAt(X(269), Z(180)));
+ok('舊牆切開的南側桌列缺口可過', await freeAt(X(262), Z(220)));
 ok('窗邊與草皮牆之間走道可過', await freeAt(X(420), Z(150)) && await freeAt(X(420), Z(170)) && await freeAt(X(420), Z(135)));
+ok('儲藏室北牆真門可進出', await freeAt(X(427), Z(241)));
+ok('儲藏室北牆舊門洞已封', await blocked(X(440), Z(241)));
 
-ok('LUXCAT 玻璃隔間會擋人', await blocked(X(334), Z(236)));
+ok('原 L 形玻璃南側走道可過', await freeAt(X(334), Z(248)));
 ok('會客室門口可過', await freeAt(X(266.1), Z(286.6)));
 const spawnFree = [];
 const M = await A.evaluate(() => ({ hiders: __ph.MAPS.lucky.hiders, seekers: __ph.MAPS.lucky.seekers, lobbyAt: __ph.MAPS.lucky.lobbyAt, bounds: __ph.MAPS.lucky.bounds }));

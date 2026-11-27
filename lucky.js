@@ -12,7 +12,7 @@ export const ROOMS = [
   { id: 'boss', name: '老闆辦公室', at: [168, 150], sure: true },
   { id: 'arc', name: '辦公室', at: [88, 172], sure: false },
   { id: 'nw', name: '小辦公室', at: [70, 214], sure: false },
-  { id: 'copy', name: '影印區', at: [210, 140], sure: true },
+  { id: 'copy', name: '影印區', at: [256, 148], sure: true },
   { id: 'spare', name: '機房', at: [189, 280], sure: true },
   { id: 'party', name: '晶洞會客室', at: [236, 276], sure: true },
   { id: 'entry', name: '入口區', at: [306, 262], sure: true },
@@ -47,12 +47,10 @@ const WALLS = [
   [[168, 271], [168, 304], 'in'], [[168, 271], [211, 257], 'in', { gaps: [[14, 31]] }],
   // Meeting Room（白磚牆＋黑框玻璃）
   [[211, 257], [211, 304], 'brick'], [[211, 260], [228, 260], 'glassB'], [[228, 260], [281, 297], 'glassB', { gaps: [[38, 55]] }],
-  // 福貓挖寶網後方：LUXCAT 黑框格柵玻璃（L 形轉角；x=305 入口直線保持暢通）
-  [[316, 236], [352, 236], 'glassB'], [[316, 236], [316, 214], 'glassB'],
   // 茶水間旁玻璃隔間（大貓貼紙）
   [[335, 268], [335, 297], 'glassB'],
   // 儲藏室／設備間
-  [[421, 241], [421, 306], 'in'], [[421, 241], [487, 241], 'in', { gaps: [[3, 20]] }], [[460, 241], [460, 306], 'in', { gaps: [[3, 20]] }],
+  [[421, 241], [421, 306], 'in'], [[421, 241], [487, 241], 'in', { gaps: [[0, 12.7]] }], [[460, 241], [460, 306], 'in', { gaps: [[3, 20]] }],
   // 草皮辦公區：僅南側內牆（靠辦公桌）為「LUCKY CAT.」草皮；西牆白牆＋門；東牆白牆。斜牆東端開口保留（P07）
   [[434, 112], [434, 146], 'in', { gaps: [[9, 27]] }], [[434, 146], [487, 178], 'grass', { gaps: [[46, 62]] }],
 ];
@@ -80,7 +78,7 @@ export const WINDOWS = WIN.map(([o, line, s, c, w, curt]) => {
 });
 export const WINDOW_HOLES = WINDOWS.map(w => w.o === 'v' ? ['x', w.x, w.z, 1.55, w.w / 2 + .05, .78] : ['z', w.z, w.x, 1.55, w.w / 2 + .05, .78]);
 export const BOUNDS = { x1: X(12) + .2, x2: X(487) - .2, z1: Z(112) + .2, z2: Z(322) - .2 };
-export const HIDER_SPAWNS = [[232, 144], [250, 144], [288, 194], [300, 194], [340, 194], [232, 194], [342, 194], [250, 248]].map(([a, b]) => [X(a), Z(b)]);
+export const HIDER_SPAWNS = [[218, 144], [255, 168], [288, 194], [300, 194], [340, 194], [232, 194], [342, 194], [250, 248]].map(([a, b]) => [X(a), Z(b)]);
 export const SEEKER_SPAWN = [X(305), Z(312)];
 export const SEEKER_SPAWN2 = [X(332), Z(312)];
 export const LOBBY_AT = [X(288), Z(194)];
@@ -129,7 +127,7 @@ for (const x of [228.3, 294.9, 328.3, 361.6, 394.9]) A('gridPanel', x, LOWER_SEA
 // 白色鐵網在兩排桌子之間（v22 標註 6，粉框 plan 305–401, 182–192；P04）
 for (const x of [314, 332.2, 350.4, 368.6, 386.8]) A('gridPanel', x, 187, 0);
 // 影印區：影印機＋證書在老闆辦公室東牆外側（北窗長桌西端），木紋儲櫃沿牆
-A('copier', 206, 130, 90); A('cardboardBoxClosed', 206, 142, 15); A('cardboardBoxClosed', 212, 144, -10);
+A('copier', 255.6, 147.9, 180); A('cardboardBoxClosed', 206, 142, 15); A('cardboardBoxClosed', 212, 144, -10);
 A('woodWardrobe', 202.6, 154, 90); A('woodWardrobe', 202.6, 168, 90);
 onWall('certFrame', 'v', 197, +1, 128, 1.7);
 A('pottedPlant', 286, 132, 0);
@@ -167,7 +165,6 @@ A('cupSet', 246, 280, 0, .74); A('plantSmall1', 268, 270, 0);
 A('geode', 217.5, 268, 25); A('geode', 224, 294, -12); A('geode', 248, 296, 8);
 // 福貓挖寶網櫃台（v22 標註 7，紅框 plan 277–318, 256–270）
 A('treasureCounter', 297.6, 263, 0);
-A('cardboardBoxClosed', 310, 274, 15); A('cardboardBoxClosed', 316, 276, -8); A('cardboardBoxOpen', 312, 274, 90);
 // 入口區植物（拿掉與中島衝突的接待櫃台）
 A('pottedPlant', 286.5, 291, 0);
 // 電梯廳
@@ -554,10 +551,24 @@ export function buildLuckyShell(api) {
     addGeo(C_OUT, boxGeo(TO + .06, .06, z1 - z0 + .04, x, HH + .03, (z0 + z1) / 2));
     col(x - TO / 2, x + TO / 2, z0, z1, HH, { wall: true });
   }
-  // 開放辦公區白色隔牆（v22 標註 3，綠框 plan x=262.6–275.1, y=112–237.5）
-  { const x1 = X(262.57), x2 = X(275.13), z1 = Z(112) + TO / 2, z2 = Z(237.51);
+  // 開放辦公區白色隔牆（v23 t85u 標註 2，綠框 plan x=233.5–246.7, y=112.5–156.9；舊牆 262.6–275.1×112–237.5 已撤）
+  { const x1 = X(233.46), x2 = X(246.69), z1 = Z(112) + TO / 2, z2 = Z(156.85);
     addGeo(C_IN, boxGeo(x2 - x1, WH, z2 - z1, (x1 + x2) / 2, WH / 2, (z1 + z2) / 2));
     col(x1, x2, z1, z2, WH, { wall: true });
+  }
+  // 白牆兼櫃子（v23 t85u 標註 3，橙框 plan x=247.4–262.6, y=112.5–138.5；東側面有櫃門）
+  { const x1 = X(247.35), x2 = X(262.56), z1 = Z(112) + TO / 2, z2 = Z(138.5);
+    const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, w = x2 - x1, d = z2 - z1;
+    addGeo(C_IN, boxGeo(w, WH, d, cx, WH / 2, cz));
+    const xe = x2 + .01;
+    addGeo('#d4d0c8', boxGeo(.02, WH - .16, d - .08, xe, WH / 2, cz));
+    for (const t of [-.32, 0, .32]) addGeo('#c0bbb3', boxGeo(.025, WH - .22, .015, xe + .01, WH / 2, cz + d * t / 2));
+    for (const t of [-.32, 0, .32]) addGeo('#9e9e9e', boxGeo(.03, .22, .025, xe + .03, 1.05, cz + d * t / 2));
+    col(x1, x2, z1, z2, WH, { wall: true });
+  }
+  // 儲藏室北牆真門（v23 t85u 標註 7，門扇開向南側走廊；牆見 WALLS y=241）
+  { const hx = X(421) + .04, hz = Z(241) + TO / 2 + .02, ry = .55;
+    addGeo('#d9c4a0', boxGeo(.06, 2.05, .78, hx + Math.sin(ry) * .39, 1.02, hz + Math.cos(ry) * .39, ry + Math.PI / 2));
   }
   // 草皮房西門（微開的門扇，鉸在北側門框）
   { const hx = X(434) + .04, hz = Z(121.2), ry = -.55;
@@ -628,42 +639,7 @@ export function buildLuckyShell(api) {
     decal(tex(640, 240, (x, w, h) => { x.fillStyle = 'rgba(255,255,255,.0)'; x.clearRect(0, 0, w, h);
       x.fillStyle = '#222'; x.font = 'bold 64px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Meeting Room', w / 2, h * .38);
       x.font = '32px Georgia, serif'; x.fillText('We are in a meeting', w / 2, h * .72); }), 2.15, .8, cx, 1.55, cz, ry); }
-  // LUXCAT 黑框密格柵＋黑色對話框招牌（挖寶網後方玻璃朝南側）
-  { const segs = [[[316, 236], [352, 236], -1], [[316, 236], [316, 214], -1]];
-    for (const [[axp, ayp], [bxp, byp], side] of segs) {
-      const ax = X(axp), az = Z(ayp), bx = X(bxp), bz = Z(byp), len = Math.hypot(bx - ax, bz - az);
-      const nx = side * (bz - az) / len, nz = -side * (bx - ax) / len;
-      const ry = Math.atan2(-(bz - az), bx - ax);
-      const cols = Math.max(3, Math.round(len / .48)), rows = 3;
-      for (let c = 0; c <= cols; c++) {
-        const t = c / cols, px = ax + (bx - ax) * t + nx * .03, pz = az + (bz - az) * t + nz * .03;
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(.03, 2.4, .03), new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: .5 }));
-        bar.position.set(px, 1.2, pz); bar.rotation.y = ry; root.add(bar);
-      }
-      for (let r = 0; r <= rows; r++) {
-        const y = .08 + r * (2.32 / rows);
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(len + .04, .03, .03), new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: .5 }));
-        bar.position.set((ax + bx) / 2 + nx * .03, y, (az + bz) / 2 + nz * .03); bar.rotation.y = ry; root.add(bar);
-      }
-    }
-    const bubble = (lines, px, py, y, faceSouth, w = .7, h = .55) => {
-      const c = tex(512, 400, (x, W, H) => { x.clearRect(0, 0, W, H);
-        x.fillStyle = '#171717'; x.beginPath(); x.roundRect(20, 10, W - 40, H - 90, 50); x.fill();
-        x.beginPath(); x.moveTo(W * .42, H - 90); x.lineTo(W * .5, H - 20); x.lineTo(W * .58, H - 90); x.closePath(); x.fill();
-        x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
-        x.font = `bold ${lines.length > 2 ? 36 : 48}px sans-serif`;
-        lines.forEach((t, i) => x.fillText(t, W / 2, (H - 80) * (i + 1) / (lines.length + 1))); });
-      decal(c, w, h, X(px), y, Z(py), faceSouth ? 0 : Math.PI);
-    };
-    bubble(['LUXCAT', 'ECOSYSTEM'], 326, 236.4, 1.7, true, .72, .58);
-    bubble(['DREAM', 'WISH'], 334, 236.4, 1.15, true, .55, .42);
-    bubble(['COMPANY', 'SINCE'], 344, 236.4, 1.55, true, .62, .48);
-    // 梅花／話框剪影
-    decal(tex(256, 256, (x, W, H) => { x.clearRect(0, 0, W, H); x.fillStyle = '#171717';
-      const blob = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, 6.3); x.fill(); };
-      blob(W * .5, H * .32, 46); blob(W * .32, H * .5, 46); blob(W * .68, H * .5, 46); blob(W * .5, H * .62, 50);
-    }), .4, .4, X(348), 1.9, Z(236.4), Math.PI);
-  }
+  // v23 t85u 標註 5：此處沒有 L 形鐵網／LUXCAT 格柵玻璃，已撤。
   // 福貓雕像背後的白色燈箱牆（茶水間南側、中島右側）
   { const x = X(346), z = Z(290);
     const pan = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, .06), new THREE.MeshStandardMaterial({ color: '#f7f7f4', roughness: .45, emissive: '#f0f0ea', emissiveIntensity: .22 }));

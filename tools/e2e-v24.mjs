@@ -1,4 +1,4 @@
-// v23：每回合家具在原房間內自動洗牌。
+// v24：每回合家具在原房間內自動洗牌。
 // 檢查：兩位玩家座標一致、換一局擺法不同、每件還在自己的房間、地面家具不重疊、出生點沒被堵住。
 import { chromium } from 'playwright-core';
 const URL = process.env.URL || 'http://localhost:8765/';
