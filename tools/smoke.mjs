@@ -1,0 +1,16 @@
+import { chromium } from 'playwright-core';
+const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
+p.on('console', m => console.log('[c]', m.type(), m.text()));
+p.on('pageerror', e => console.log('[err]', e.message));
+await p.goto('http://localhost:8765/');
+await p.waitForFunction(() => window.__ph?.ready, null, { timeout: 30000 });
+await p.screenshot({ path: '../shots/smoke-home.png' });
+await p.click('#createBtn');
+await p.waitForSelector('#lobby:not(.hidden)', { timeout: 20000 });
+console.log('code', await p.textContent('#roomCode'));
+await p.evaluate(() => { document.getElementById('lobby').classList.add('hidden'); __ph.cam.pitch = 1.25; });
+await p.evaluate(() => { __ph.teleport(0, 0); });
+await p.waitForTimeout(800);
+await p.screenshot({ path: '../shots/smoke-top.png' });
+await b.close();
