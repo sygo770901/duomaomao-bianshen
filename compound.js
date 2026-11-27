@@ -24,7 +24,7 @@ function classify(name) {
   if (/^bed/i.test(n) || n === 'bedBunk' || n === 'bedSingle' || n === 'bedDouble') return 'bed';
   if (/loungeSofa$/.test(n)) return 'sofa';
   if (/chair|stool|bench|loungeChair|beanBag/i.test(n)) return 'chair';
-  if (/^(table|desk|confTable|pingPong|kitchenBar|kitchenBarEnd|sideTable|tableRound|tableCoffee|tableCoffeeGlass|receptionDesk|longDesk|ovalTable|bistroTable|highTable)$/.test(n)) return 'table';
+  if (/^(table|desk|confTable|pingPong|kitchenBar|kitchenBarEnd|sideTable|tableRound|tableCoffee|tableCoffeeGlass|receptionDesk|longDesk|ovalTable|bistroTable|highTable|whiteDesk|treasureCounter|kitchenIsland|copier)$/.test(n)) return 'table';
   if (/bookcaseClosed|lockers|filingCabinet|snackCabinet|tallCabinet|woodWardrobe/.test(n)) return 'solid';
   if (/bookcase|shelfBoxes|wireRack/.test(n)) return 'shelf';
   return 'solid';

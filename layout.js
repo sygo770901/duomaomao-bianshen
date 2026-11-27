@@ -12,7 +12,10 @@ const FIXED = new Set([
   'cabinetTelevision', 'lockers', 'vendingMachine', 'snackCabinet', 'waterCooler', 'waterDispenser',
   'piano', 'pingPong', 'foosball', 'arcade', 'gridPanel',
   'woodCounter', 'woodSink', 'kitchenIsland', 'wireRack', 'woodWardrobe',
+  'treasureCounter', 'copier',
 ]);
+// 吊在天花板上的，不跟著桌子走，也不佔地面。
+const HANGING = new Set(['goldPendant']);
 // 電視櫃旁邊這一組（喇叭、地上的玩具）跟著電視牆留在原地，才不會散到客廳另一頭。
 const TV_CLUSTER = new Set(['speaker', 'speakerSmall', 'televisionModern', 'gameConsole', 'handheldGame', 'gameController', 'toyBlocks', 'plushToy', 'toyCar', 'toyBall']);
 
@@ -110,6 +113,8 @@ const LUCKY_ROOMS = [
   lBox('equip', 466, 248, 482, 300),
   lBox('small', 440, 128, 482, 170),
   lBox('north', 208, 116, 426, 150),
+  // 影印機在老闆東牆外側、北窗長桌西端。範圍小於窗邊辦公區，重疊時以這裡為準。
+  lBox('copyNook', 196, 122, 220, 176),
   lBox('open', 202, 158, 428, 244),
   lBox('read', 126, 184, 192, 236),
   lBox('cafe', 426, 182, 482, 236),
@@ -191,6 +196,7 @@ export function classifyIndex(i, opts) {
   const room = roomAt(map, p[1], p[2]);
   const support = supportOf(i, props, propMap, sizes);
   if (wallNames && wallNames.has(p[0])) return { kind: 'wall', room, support: -1 };
+  if (HANGING.has(p[0])) return { kind: 'wall', room, support: -1 };
   if (FIXED.has(p[0])) return { kind: 'fixed', room, support: -1 };
   if ((p[4] || 0) >= 0.18 && support >= 0) return { kind: 'rider', room, support };
   if (!room) return { kind: 'out', room: null, support: -1 };

@@ -1,4 +1,4 @@
-// 福貓辦公室・LUCKY CAT 總部（v11）：依 Luxcat 2F 平面圖（/workspace/office-plan/make_plan.py）重建。
+// 福貓辦公室・LUCKY CAT 總部（v18，依實地照片修正中段／右側）：依 Luxcat 2F 平面圖（/workspace/office-plan/make_plan.py）重建。
 // 平面圖單位 → 世界座標：X = (px-250)*K、Z = (py-209)*K（俯視上方 = -z）。平面圖 1 單位約 6 cm；世界 1 單位約 0.9 m（配合 Kenney 家具放大 2.2 倍）。
 export const K = 0.066;
 const X = px => +((px - 250) * K).toFixed(3);
@@ -8,22 +8,22 @@ const WH = 2.72, TI = .14, TO = .3;
 // ---------- 房間名稱（之後拿到正確名稱只要改這張表）----------
 // sure: false = 平面圖看不清或照片對應是推測
 export const ROOMS = [
-  { id: 'meeting', name: '會議室', at: [62, 262], sure: true },
+  { id: 'meeting', name: '大會議室', at: [62, 262], sure: true },
   { id: 'boss', name: '老闆辦公室', at: [168, 150], sure: true },
   { id: 'arc', name: '辦公室', at: [88, 172], sure: false },
   { id: 'nw', name: '小辦公室', at: [70, 214], sure: false },
-  { id: 'copy', name: '影印區', at: [140, 262], sure: false },
+  { id: 'copy', name: '影印區', at: [210, 140], sure: true },
   { id: 'spare', name: '備品室', at: [189, 280], sure: false },
-  { id: 'party', name: '生日會客室', at: [236, 276], sure: false },
+  { id: 'party', name: 'Meeting Room', at: [236, 276], sure: true },
   { id: 'entry', name: '入口區', at: [306, 262], sure: true },
   { id: 'pantry', name: '茶水間', at: [372, 258], sure: true },
   { id: 'store', name: '儲藏室', at: [440, 262], sure: false },
   { id: 'equip', name: '設備間', at: [473, 262], sure: false },
-  { id: 'small', name: '小會議室', at: [452, 124], sure: false },
-  { id: 'north', name: '窗邊辦公區', at: [330, 136], sure: false },
+  { id: 'small', name: '草皮辦公區', at: [460, 148], sure: true },
+  { id: 'north', name: '窗邊辦公區', at: [330, 136], sure: true },
   { id: 'read', name: '閱覽區', at: [160, 200], sure: false },
   { id: 'open', name: '開放辦公區', at: [300, 202], sure: true },
-  { id: 'cafe', name: 'LUCKY CAT 咖啡角', at: [448, 210], sure: false },
+  { id: 'cafe', name: '福貓挖寶網', at: [284, 248], sure: true },
   { id: 'lift', name: '電梯廳', at: [333, 312], sure: false },
 ];
 
@@ -46,14 +46,16 @@ const WALLS = [
   [[23, 239], [113, 239], 'in'], [[113, 239], [113, 304], 'in', { gaps: [[2, 19]] }],
   // 影印區／備品室
   [[168, 271], [168, 304], 'in'], [[168, 271], [211, 257], 'in', { gaps: [[14, 31]] }],
-  // 生日會客室（白磚牆＋黑框玻璃）
+  // Meeting Room（白磚牆＋黑框玻璃）
   [[211, 257], [211, 304], 'brick'], [[211, 260], [228, 260], 'glassB'], [[228, 260], [281, 297], 'glassB', { gaps: [[38, 55]] }],
+  // 福貓挖寶網後方：LUXCAT ECOSYSTEM 黑框玻璃隔間（入口直走路徑 x≈305 保持暢通）
+  [[272, 236], [300, 236], 'glassB'],
   // 茶水間旁玻璃隔間（大貓貼紙）
   [[335, 268], [335, 297], 'glassB'],
   // 儲藏室／設備間
   [[421, 241], [421, 306], 'in'], [[421, 241], [487, 241], 'in', { gaps: [[3, 20]] }], [[460, 241], [460, 306], 'in', { gaps: [[3, 20]] }],
-  // 小會議室（霧面玻璃＋草皮牆）
-  [[434, 112], [434, 146], 'glassF', { gaps: [[4, 21]] }], [[434, 146], [487, 178], 'grass'],
+  // 草皮辦公區：西牆為「LUCKY CAT.」草皮牆；東南斜牆近辦公區端開口可進出
+  [[434, 112], [434, 146], 'grass'], [[434, 146], [487, 178], 'grass', { gaps: [[0, 16]] }],
 ];
 // 弧形外牆（左上辦公室，下半牆＋玻璃）
 const ARC = { c: [109.6, 205.9], r: 54, a0: Math.atan2(190 - 205.9, 58 - 109.6), a1: Math.atan2(152 - 205.9, 108 - 109.6), n: 9 };
@@ -119,17 +121,27 @@ for (const x of [216, 249.5, 302, 335.5, 369, 402.5]) longDesk(x, 120.5, +1);
 deskCluster([229, 262.5], 173.75); deskCluster([306, 339.5, 373], 173.75);
 deskCluster([229, 262.5], 229.75); deskCluster([347, 380.5], 229.75);
 A('gridPanel', 245.75, 173.75, 0); A('gridPanel', 339.5, 173.75, 0); A('gridPanel', 245.75, 229.75, 0); A('gridPanel', 363.75, 229.75, 0);
-A('tallCabinet', 202.6, 146, 90); A('tallCabinet', 202.6, 160, 90);
-A('standFan', 424, 152, -120); A('pottedPlant', 205, 132, 0); A('pottedPlant', 286, 132, 0); A('trashcan', 283, 202, 0);
-A('printer', 205.5, 205, 90); A('pottedPlant', 403, 202, 0);
+// 窗邊長桌走道：白色 X 隔板（木柱在 buildLuckyShell）
+for (const x of [216, 249.5, 335.5, 369, 402.5]) A('gridPanel', x, 136, 0);
+A('gridPanel', 216, 173.75, 0); A('gridPanel', 373, 173.75, 0);
+// 影印區：影印機＋證書在老闆辦公室東牆外側（北窗長桌西端），木紋儲櫃沿牆
+A('copier', 206, 130, 90); A('cardboardBoxClosed', 206, 142, 15); A('cardboardBoxClosed', 212, 144, -10);
+A('woodWardrobe', 202.6, 154, 90); A('woodWardrobe', 202.6, 168, 90);
+onWall('certFrame', 'v', 197, +1, 128, 1.7);
+A('standFan', 424, 152, -120); A('pottedPlant', 286, 132, 0); A('trashcan', 283, 202, 0);
+A('pottedPlant', 403, 202, 0); A('officeCat', 292, 210, 30);
 onWall('clock', 'h', 112, +1, 276, 2.2, true);
-// LUCKY CAT 草皮牆前：長木凳＋黑色小圓桌＋X 背椅；窗邊高桌與木櫃吧台
-A('woodBench', 446.6, 162.6, -31.1); A('woodBench', 466.9, 174.8, -31.1);
-for (const [x, z] of [[426, 184], [452, 198]]) { A('bistroTable', x, z, 0); A('bistroChair', x - 8, z, 90); A('bistroChair', x + 8, z, -90); A('cupSet', x, z, 0, .74); }
-for (const x of [451, 464.6, 478.2]) A('woodCounter', x, 235.4, 180);
-A('dishRack', 451, 235.4, 180, .9); A('kitchenCoffeeMachine', 464.6, 236, 180, .9); A('plateStack', 478.2, 235, 0, .9);
-for (const [x, z] of [[446, 220], [472, 214]]) { A('highTable', x, z, 0); A('stoolBar', x - 7.5, z + 3, 60); A('stoolBar', x + 7.5, z - 3, -120); }
-A('standFan', 482, 198, -90);
+// 吊燈：北窗長桌、中島上方
+for (const x of [230, 280, 330, 385]) A('goldPendant', x, 132, 0, 2.42);
+A('goldPendant', 250, 200, 0, 2.42); A('goldPendant', 370, 200, 0, 2.42);
+A('goldPendant', 350, 262, 0, 2.42); A('goldPendant', 390, 262, 0, 2.42);
+// 草皮辦公區：白色書桌、窗邊矮木櫃、紫晶洞、銅色立扇
+for (const x of [448, 466, 484]) A('woodCounter', x, 119.2, 0);
+A('geode', 448, 119.2, 20, .95); A('geode', 468, 119.2, -15, .95); A('geode', 482, 119.2, 8, .95);
+A('whiteDesk', 462, 140, 90); A('meshChair', 472, 140, 90); A('computerScreen', 464.2, 140, 90, .73);
+A('whiteDesk', 470, 165, 0); A('meshChair', 470, 174, 180); A('computerScreen', 470, 162.6, 0, .73);
+A('whiteDesk', 458, 190, -20); A('meshChair', 450, 198, 160); A('penCup', 458, 190, 10, .73);
+A('standFan', 430, 130, 20); A('standFan', 482, 168, -50); A('pottedPlant', 478, 200, 0);
 // 閱覽區
 A('bookcaseOpen', 145, 184.5, 0); A('bookcaseOpen', 160, 184.5, 0); A('books', 152, 184, 0, .95);
 A('loungeChair', 148, 212, 150); A('loungeChair', 172, 214, -150); A('sideTable', 160, 224, 0); A('plantSmall2', 156, 224, 0, .85);
@@ -140,10 +152,12 @@ A('tallCabinet', 163.6, 284, -90); A('cardboardBoxClosed', 128, 297, 20); A('tra
 // 備品室
 A('shelfBoxes', 206.4, 282, -90); A('shelfBoxes', 206.4, 296, -90); A('tallCabinet', 171.5, 291, 90);
 A('cardboardBoxClosed', 186, 299, 0); A('cardboardBoxOpen', 188, 290, 90); A('drawerTower', 174, 278, 90); A('broom', 196, 274, 0);
-// 生日會客室：紫晶洞、黑色鐵椅、小圓桌
-A('geode', 217.5, 268, 90); A('geode', 217.5, 298, 90);
-A('bistroTable', 236, 286, 0); A('metalChair', 228, 286, 90); A('metalChair', 244, 286, -90);
-A('bistroTable', 258, 297.5, 0); A('metalChair', 250, 297.5, 90); A('metalChair', 266, 297.5, -90); A('plantSmall1', 236, 286, 0, .74);
+// Meeting Room：圓桌＋金屬椅（玻璃上另有 Meeting Room 字樣）
+A('ovalTable', 246, 280, 0);
+A('metalChair', 246, 268, 0); A('metalChair', 258, 280, 90); A('metalChair', 246, 292, 180); A('metalChair', 234, 280, -90);
+A('cupSet', 246, 280, 0, .74); A('plantSmall1', 268, 270, 0);
+// 福貓挖寶網展示櫃（走廊，Meeting Room 東側）
+A('treasureCounter', 284, 248, 0);
 // 入口區：白色百葉屏風、接待櫃台、植物
 A('foldScreen', 298, 287, 0); A('luckyReception', 322, 277, -90); A('computerScreen', 324.5, 277, -90, 1.08);
 A('pottedPlant', 286.5, 291, 0); A('meshChair', 330.5, 283, -90);
@@ -164,9 +178,7 @@ A('cardboardBoxClosed', 437, 300, 0); A('cardboardBoxClosed', 444, 300, 15); A('
 onWall('wallAC', 'h', 241, +1, 452, 2.32);
 // 設備間
 A('wireRack', 481.3, 256, -90); A('wireRack', 481.3, 271, -90); A('cardboardBoxClosed', 470, 297, 0); A('broom', 466, 300, 0); A('drawerTower', 468, 283, 90);
-// 小會議室（照片 6）：白色橢圓桌、白色鐵椅、黑色辦公椅、黑色小圓桌
-A('ovalTable', 449, 141, 0); A('tolixChair', 443, 130.5, 0); A('tolixChair', 455, 130.5, 0); A('tolixChair', 441, 151, 160);
-A('meshChair', 466, 147, -90); A('bistroTable', 478, 133, 0); A('computerScreen', 449, 138.5, 0, .73);
+// 草皮辦公區北牆冷氣（家具已改為白桌／矮櫃，見上）
 onWall('wallAC', 'h', 123, +1, 478, 2.32, true);
 // 老闆辦公室（粉紅長條地板）
 A('desk', 180, 140, 180); A('chairDesk', 180, 125, 0); A('computerScreen', 182, 142.6, 180, .85); A('laptop', 172, 139, 200, .85);
@@ -194,10 +206,11 @@ export const DECOR = [
 // ---------- 程式產生的福貓辦公室家具 ----------
 export const LUCKY_PROC = ['longDesk', 'meshChair', 'pedestal', 'drawerTower', 'tissueBox', 'fileTray', 'penCup', 'deskPhone', 'gridPanel', 'tallCabinet',
   'woodCounter', 'woodSink', 'waterDispenser', 'wireRack', 'kitchenIsland', 'dishRack', 'standFan', 'luckyCatStatue', 'geode', 'bistroTable', 'bistroChair',
-  'highTable', 'tolixChair', 'metalChair', 'ovalTable', 'luckyReception', 'foldScreen', 'wallAC', 'foodFrame', 'potShelf', 'woodWardrobe', 'woodBench'];
-export const LUCKY_WALL = ['wallAC', 'foodFrame', 'potShelf'];
-export const LUCKY_SMALL = ['meshChair', 'bistroChair', 'tolixChair', 'metalChair', 'tissueBox', 'fileTray', 'penCup', 'deskPhone', 'dishRack', 'standFan', 'drawerTower', 'foldScreen'];
-export const LUCKY_IMMUNE = ['longDesk', 'tallCabinet', 'woodCounter', 'woodSink', 'kitchenIsland', 'luckyReception', 'woodWardrobe', 'wireRack', 'luckyCatStatue', 'ovalTable', 'geode', 'bistroTable', 'highTable', 'woodBench'];
+  'highTable', 'tolixChair', 'metalChair', 'ovalTable', 'luckyReception', 'foldScreen', 'wallAC', 'foodFrame', 'potShelf', 'woodWardrobe', 'woodBench',
+  'whiteDesk', 'treasureCounter', 'goldPendant', 'copier', 'certFrame', 'officeCat'];
+export const LUCKY_WALL = ['wallAC', 'foodFrame', 'potShelf', 'certFrame'];
+export const LUCKY_SMALL = ['meshChair', 'bistroChair', 'tolixChair', 'metalChair', 'tissueBox', 'fileTray', 'penCup', 'deskPhone', 'dishRack', 'standFan', 'drawerTower', 'foldScreen', 'officeCat', 'goldPendant'];
+export const LUCKY_IMMUNE = ['longDesk', 'tallCabinet', 'woodCounter', 'woodSink', 'kitchenIsland', 'luckyReception', 'woodWardrobe', 'wireRack', 'luckyCatStatue', 'ovalTable', 'geode', 'bistroTable', 'highTable', 'woodBench', 'treasureCounter', 'whiteDesk', 'copier'];
 function tex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; }
 const WOOD = '#c9a27c', BLACK = '#262626', WHITE = '#f4f4f2';
 
@@ -256,6 +269,8 @@ export function luckyProc(THREE, name, g, add, m) {
     add(1.2, .04, .035, c, 0, 1.48, 0); add(1.2, .04, .035, c, 0, .02, 0); add(.04, 1.5, .035, c, -.58, .75, 0); add(.04, 1.5, .035, c, .58, .75, 0);
     for (let i = 1; i < 6; i++) add(.012, 1.46, .015, c, -.58 + i * .193, .75, 0);
     for (let j = 1; j < 8; j++) add(1.16, .012, .015, c, 0, .02 + j * .182, 0);
+    const xang = Math.atan2(1.42, 1.12);
+    add(.03, 1.82, .012, c, 0, .75, .01, xang); add(.03, 1.82, .012, c, 0, .75, .01, -xang);
     for (const sx of [-.5, .5]) add(.06, .03, .28, '#e0e0e0', sx, .015, 0);
   } else if (name === 'tallCabinet') { add(.9, 2.0, .45, '#f5f5f3', 0, 1.0, 0); add(.008, 1.94, .01, '#c8c8c8', 0, 1.0, .226); for (const sx of [-.05, .05]) add(.025, .22, .025, '#9e9e9e', sx, 1.05, .24);
     add(.88, .008, .01, '#d0d0d0', 0, .4, .226);
@@ -267,9 +282,9 @@ export function luckyProc(THREE, name, g, add, m) {
     add(.9, .84, .6, '#b5845a', 0, .44, 0); add(.92, .04, .62, '#f4f3ef', 0, .88, 0); add(.88, .06, .02, '#4e342e', 0, .03, .29);
     add(.008, .7, .01, '#8d6e4c', 0, .46, .301); for (const sx of [-.08, .08]) add(.02, .12, .02, '#cfcfcf', sx, .7, .31);
     if (name === 'woodSink') { add(.44, .02, .34, '#b0bec5', 0, .9, 0); add(.38, .03, .28, '#78909c', 0, .895, 0); cyl(.015, .015, .24, '#cfd8dc', 0, 1.02, -.2, 8); add(.02, .02, .16, '#cfd8dc', 0, 1.13, -.13); }
-  } else if (name === 'kitchenIsland') { // 中島（電磁爐）
-    add(1.4, .84, .7, '#b5845a', 0, .44, 0); add(1.44, .04, .74, '#f4f3ef', 0, .88, 0); add(1.36, .06, .02, '#4e342e', 0, .03, .34);
-    add(.55, .012, .4, '#111', .35, .906, 0); for (const sx of [.23, .47]) cyl(.09, .09, .004, '#444', sx, .914, 0, 18);
+  } else if (name === 'kitchenIsland') { // 白色中島、兩口電磁爐
+    add(1.8, .84, .74, '#e8e6e1', 0, .44, 0); add(1.86, .04, .8, '#fafaf7', 0, .88, 0); add(1.76, .04, .02, '#c8c8c4', 0, .03, .36);
+    for (const ox of [-.4, .4]) { add(.55, .012, .4, '#111', ox, .906, 0); for (const sx of [-.12, .12]) cyl(.09, .09, .004, '#444', ox + sx, .914, 0, 18); }
   } else if (name === 'waterDispenser') { // 黑色冰熱飲水機
     add(.32, 1.0, .33, '#1f1f1f', 0, .5, 0); add(.26, .2, .02, '#333', 0, .76, .17); add(.05, .05, .05, '#e53935', -.06, .76, .19); add(.05, .05, .05, '#1e88e5', .06, .76, .19);
     add(.24, .03, .1, '#888', 0, .55, .17); cyl(.12, .12, .05, '#9e9e9e', 0, 1.03, 0, 14);
@@ -359,6 +374,44 @@ export function luckyProc(THREE, name, g, add, m) {
     const cu = new THREE.MeshStandardMaterial({ color: '#c77b3f', roughness: .3, metalness: .6 });
     cyl(.08, .07, .09, cu, -.25, -.035, .1, 14); cyl(.065, .06, .075, cu, -.08, -.04, .1, 14);
     for (const [bx, c, h] of [[.12, '#2e7d32', .2], [.2, '#6d4c41', .17], [.28, '#b3e5fc', .15]]) cyl(.028, .03, h, c, bx, -.08 + h / 2, .09, 10);
+  } else if (name === 'whiteDesk') { // 草皮辦公區白色書桌
+    add(1.4, .03, .7, '#f7f7f5', 0, .72, 0); add(1.36, .04, .66, '#ececec', 0, .69, 0);
+    for (const sx of [-.64, .64]) for (const sz of [-.3, .3]) cyl(.016, .016, .69, '#cfd3d6', sx, .345, sz, 8);
+    add(.42, .14, .5, '#eeeeee', .42, .62, 0); add(.12, .02, .03, '#bdbdbd', .42, .62, .26);
+  } else if (name === 'treasureCounter') { // 福貓挖寶網：黑／米櫃台＋玻璃檯面
+    add(1.65, .5, .58, '#1c1c1c', 0, .25, 0); add(1.65, .48, .58, '#f1ebdd', 0, .74, 0);
+    add(1.65, .03, .02, '#1c1c1c', 0, .5, .291);
+    const tc = tex(512, 128, (x, w, h) => { x.fillStyle = '#1c1c1c'; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#f1ebdd'; x.font = 'bold 54px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('福貓挖寶網', w / 2, h / 2); });
+    texMesh(1.5, .28, tc, 0, .72, .302);
+    const gm = new THREE.Mesh(new THREE.BoxGeometry(1.6, .02, .52), new THREE.MeshStandardMaterial({ color: '#d9f3ff', transparent: true, opacity: .4, roughness: .08 })); gm.position.set(0, 1.0, 0); g.add(gm);
+    cyl(.07, .08, .14, '#f4f0e6', .55, 1.09, 0, 10); cyl(.05, .055, .1, '#f4f0e6', .55, 1.2, 0, 10);
+    add(.03, .12, .03, '#d32f2f', .62, 1.22, 0); add(.08, .08, .02, '#f4f0e6', .48, 1.26, 0);
+  } else if (name === 'goldPendant') { // 金色穿孔吊燈（原點在天花板，燈罩向下）
+    cyl(.005, .005, .38, '#444', 0, -.16, 0, 8);
+    const gold = new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: .75, roughness: .32, emissive: '#4a3208', emissiveIntensity: .35 });
+    cyl(.05, .05, .04, gold, 0, -.32, 0, 12); cyl(.2, .24, .14, gold, 0, -.42, 0, 20);
+    mesh(new THREE.SphereGeometry(.08, 10, 8), new THREE.MeshBasicMaterial({ color: '#fff3c4' }), 0, -.42, 0);
+  } else if (name === 'copier') { // 落地影印／複合機
+    add(.72, .72, .58, '#d5d5d5', 0, .36, 0); for (const y of [.18, .4]) add(.68, .015, .54, '#b0b0b0', 0, y, 0);
+    add(.72, .42, .58, '#c8c9cc', 0, .94, 0); add(.64, .02, .5, '#222', 0, 1.16, 0);
+    add(.5, .015, .36, '#89bcd0', 0, 1.18, .02); add(.54, .1, .08, '#bdbdbd', 0, 1.24, -.2);
+    add(.18, .06, .1, '#333', .22, 1.18, .22); add(.08, .03, .06, '#4caf50', .22, 1.22, .22);
+    add(.3, .08, .2, '#eee', -.15, 1.2, .2);
+  } else if (name === 'certFrame') { // 牆上獎狀／證書
+    add(.62, .8, .03, '#c9a227', 0, 0, 0); add(.54, .72, .02, '#faf6e8', 0, 0, .012);
+    const cf = tex(256, 320, (x, w, h) => { x.fillStyle = '#faf6e8'; x.fillRect(0, 0, w, h);
+      x.strokeStyle = '#c9a227'; x.lineWidth = 8; x.strokeRect(10, 10, w - 20, h - 20);
+      x.fillStyle = '#5d4037'; x.font = 'bold 22px serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText('CERTIFICATE', w / 2, h * .28); x.font = '16px serif'; x.fillText('LUCKY CAT', w / 2, h * .42);
+      x.fillRect(w * .25, h * .62, w * .5, 2); x.fillRect(w * .3, h * .78, w * .4, 2); });
+    texMesh(.5, .66, cf, 0, 0, .024);
+  } else if (name === 'officeCat') { // 橘白辦公室貓
+    add(.38, .14, .2, '#f0a030', 0, .11, 0); add(.18, .12, .18, '#f7f4ef', .16, .11, 0);
+    cyl(.09, .1, .14, '#f0a030', -.22, .16, 0, 10); add(.05, .08, .03, '#f0a030', -.28, .26, .05); add(.05, .08, .03, '#f0a030', -.28, .26, -.05);
+    add(.04, .04, .04, '#222', -.26, .18, .05); add(.04, .04, .04, '#222', -.26, .18, -.05);
+    add(.2, .05, .05, '#e08a20', .28, .08, .1, .6);
+    for (const z of [-.08, .08]) add(.2, .02, .03, '#d17818', -.02, .16, z);
   }
 }
 
@@ -405,12 +458,15 @@ export function buildLuckyShell(api) {
         if (kind === 'glassF') for (const yb of [.95, 1.25, 1.55]) addGeo('#ffffff', boxGeo(len, .12, .05, cx, yb, cz, ry));
         wallCols(x0, z0, x1, z1, .1, { glass: true });
       }
+      if (kind === 'brick') faces.push({ kind, a: [x0, z0], b: [x1, z1], th, s: 1 });
+      if (kind === 'grass') { faces.push({ kind, a: [x0, z0], b: [x1, z1], th, s: 1 }); faces.push({ kind, a: [x0, z0], b: [x1, z1], th, s: -1 }); }
     }
     // 門楣
     for (const [g0, g1] of o.gaps || []) { const [x0, z0] = at(g0), [x1, z1] = at(g1); const len = Math.hypot(x1 - x0, z1 - z0);
       addGeo(glass ? '#1f1f1f' : (kind === 'out' ? C_OUT : C_IN), boxGeo(len, WH - 2.25, glass ? .08 : th, (x0 + x1) / 2, (WH + 2.25) / 2, (z0 + z1) / 2, ry)); }
-    if (kind === 'brick' || kind === 'grass') faces.push({ kind, a: [X(ax), Z(ay)], b: [X(bx), Z(by)], th, s: kind === 'brick' ? 1 : -1 });
   }
+  // 草皮辦公區東牆內側：白磚（照片右側）
+  faces.push({ kind: 'brick', a: [X(487), Z(123)], b: [X(487), Z(188)], th: TO, s: -1 });
   // 弧形外牆：下半段牆＋玻璃帶＋上方牆
   { const pts = arcPts().map(([a, b]) => [X(a), Z(b)]);
     for (let i = 0; i < pts.length - 1; i++) { const [ax, az] = pts[i], [bx, bz] = pts[i + 1]; const len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(-(bz - az), bx - ax), cx = (ax + bx) / 2, cz = (az + bz) / 2;
@@ -421,7 +477,7 @@ export function buildLuckyShell(api) {
   for (const [x1p, y1p, x2p, y2p] of COLUMNS) { const x1 = X(x1p), x2 = X(x2p), z1 = Z(y1p), z2 = Z(y2p);
     addGeo('#b9b9b6', boxGeo(x2 - x1, WH, z2 - z1, (x1 + x2) / 2, WH / 2, (z1 + z2) / 2)); col(x1, x2, z1, z2, WH, { wall: true }); }
   // 開放辦公區：淺木方柱、黑色圓柱管
-  for (const [px, py] of [[393, 173.75], [207.5, 229.75], [400.5, 229.75]]) { const x = X(px), z = Z(py);
+  for (const [px, py] of [[393, 173.75], [207.5, 229.75], [400.5, 229.75], [216, 136], [249.5, 136], [335.5, 136], [369, 136], [402.5, 136], [216, 173.75], [373, 173.75], [229, 229.75], [347, 229.75]]) { const x = X(px), z = Z(py);
     addGeo('#dcc29b', boxGeo(.2, WH, .2, x, WH / 2, z)); col(x - .1, x + .1, z - .1, z + .1, WH); }
   { const x = X(284), z = Z(173.75); addGeo('#1e1e1e', cylGeo(.12, .12, WH, x, WH / 2, z, 14)); col(x - .12, x + .12, z - .12, z + .12, WH); }
   // 電梯門（電梯廳北牆）
@@ -464,29 +520,16 @@ export function buildLuckyShell(api) {
     if (f.kind === 'brick') canvas = tex(LOW ? 512 : 768, LOW ? 400 : 600, (x, w, h) => {
       x.fillStyle = '#f7f5f0'; x.fillRect(0, 0, w, h); const bh = h / 30, bw = bh * 2.6;
       for (let r = 0; r < 30; r++) for (let c = -1; c < w / bw + 1; c++) { x.fillStyle = (r * 7 + c * 3) % 5 ? '#ffffff' : '#f0eee8'; x.fillRect(c * bw + (r % 2) * bw / 2 + 2, r * bh + 2, bw - 4, bh - 4); }
-      const wh = h * (.9 / WH); for (let i = 0; i < 14; i++) { x.fillStyle = i % 2 ? '#4e342e' : '#5d4037'; x.fillRect(i * w / 14, h - wh, w / 14 - 2, wh); }
-      x.fillStyle = '#3e2723'; x.fillRect(0, h - wh - 6, w, 6);
-      const cols = ['#ff5d8f', '#ffb000', '#4caf50', '#29b6f6', '#ab47bc', '#ff7043'];
-      x.font = `bold ${Math.round(h * .085)}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-      const word = 'Happy Birthday'; let tx = w * .5 - x.measureText(word).width / 2;
-      for (let i = 0; i < word.length; i++) { const ch = word[i], cw = x.measureText(ch).width; x.fillStyle = cols[i % cols.length]; x.save(); x.translate(tx + cw / 2, h * .2 + Math.sin(i) * 6); x.rotate(Math.sin(i * 1.7) * .12); x.fillText(ch, 0, 0); x.restore(); tx += cw; }
-      for (let i = 0; i < 12; i++) { const px = w * .12 + i * w * .065; x.fillStyle = cols[i % cols.length]; x.beginPath(); x.moveTo(px, h * .07); x.lineTo(px + w * .05, h * .07); x.lineTo(px + w * .025, h * .12); x.fill(); }
-      x.strokeStyle = '#8d6e63'; x.lineWidth = 2; x.beginPath(); x.moveTo(w * .12, h * .07); x.lineTo(w * .9, h * .07); x.stroke();
-      drawCat(x, w * .5, h * .5, h / 620, { body: true, hat: true });
-      for (let i = 0; i < 6; i++) { x.fillStyle = cols[(i + 2) % 6]; x.beginPath(); x.ellipse(w * (.18 + (i % 3) * .05), h * (.36 + Math.floor(i / 3) * .14), 18, 23, 0, 0, 6.3); x.fill(); x.strokeStyle = '#999'; x.beginPath(); x.moveTo(w * (.18 + (i % 3) * .05), h * (.36 + Math.floor(i / 3) * .14) + 23); x.lineTo(w * .2, h * .62); x.stroke(); }
+      const wh = h * (.06 / WH); for (let i = 0; i < 14; i++) { x.fillStyle = i % 2 ? '#eceae4' : '#e4e2dc'; x.fillRect(i * w / 14, h - wh, w / 14 - 2, wh); }
+      x.fillStyle = '#d0cec8'; x.fillRect(0, h - wh - 4, w, 4);
     });
     else canvas = tex(LOW ? 640 : 1024, LOW ? 428 : 683, (x, w, h) => {
       x.fillStyle = '#4caf50'; x.fillRect(0, 0, w, h);
       for (let i = 0; i < (LOW ? 2600 : 6000); i++) { const px = (i * 97.13) % w, py = (i * 57.77 + (i % 13) * 31) % h; x.strokeStyle = ['#66bb6a', '#388e3c', '#7cc576', '#2e7d32', '#81c784'][i % 5]; x.lineWidth = 2; x.beginPath(); x.moveTo(px, py); x.lineTo(px + ((i % 7) - 3), py - 7 - (i % 5)); x.stroke(); }
-      x.font = `900 ${Math.round(h * .19)}px "Arial Black", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-      for (let d = 9; d > 0; d--) { x.fillStyle = '#b0bec5'; x.fillText('LUCKY CAT', w / 2 + d * .9, h * .36 + d * .9); }
-      x.fillStyle = '#ffffff'; x.fillText('LUCKY CAT', w / 2, h * .36);
-      const fish = (cx, cy, s, c, flip) => { x.save(); x.translate(cx, cy); x.scale(flip ? -s : s, s); x.fillStyle = c; x.beginPath(); x.ellipse(0, 0, 40, 20, 0, 0, 6.3); x.fill(); x.beginPath(); x.moveTo(34, 0); x.lineTo(62, -20); x.lineTo(62, 20); x.closePath(); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(-20, -4, 6, 0, 6.3); x.fill(); x.fillStyle = '#222'; x.beginPath(); x.arc(-21, -4, 3, 0, 6.3); x.fill(); x.restore(); };
-      fish(w * .14, h * .16, 1.2, '#ff8a3d', false); fish(w * .86, h * .17, 1.1, '#29b6f6', true); fish(w * .1, h * .66, 1.0, '#29b6f6', false); fish(w * .9, h * .62, 1.25, '#ff8a3d', true); fish(w * .55, h * .14, .8, '#ff8a3d', true);
-      const tool = (cx, cy, rot, c) => { x.save(); x.translate(cx, cy); x.rotate(rot); x.fillStyle = '#8d6e63'; x.fillRect(-5, -60, 10, 70); x.fillStyle = c; x.beginPath(); x.moveTo(-18, 10); x.lineTo(18, 10); x.lineTo(14, 44); x.lineTo(-14, 44); x.closePath(); x.fill(); x.restore(); };
-      tool(w * .3, h * .66, -.4, '#ff8a3d'); tool(w * .38, h * .7, .3, '#29b6f6'); tool(w * .64, h * .68, -.25, '#29b6f6'); tool(w * .72, h * .64, .45, '#ff8a3d');
-      x.save(); x.translate(w * .5, h * .7); x.rotate(-.5); x.fillStyle = '#ff7f2a'; x.beginPath(); x.ellipse(0, 30, 44, 50, 0, 0, 6.3); x.fill(); x.beginPath(); x.ellipse(0, -20, 34, 36, 0, 0, 6.3); x.fill();
-      x.fillStyle = '#3e2723'; x.beginPath(); x.arc(0, 8, 13, 0, 6.3); x.fill(); x.fillStyle = '#6d4c41'; x.fillRect(-6, -150, 12, 120); x.fillStyle = '#4e342e'; x.fillRect(-10, -170, 20, 26); x.restore();
+      x.font = `900 ${Math.round(h * .16)}px "Arial Black", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      const label = 'LUCKY CAT.';
+      for (let d = 10; d > 0; d--) { x.fillStyle = 'rgba(80,90,80,.28)'; x.fillText(label, w / 2 + d * 1.1, h * .42 + d * 1.1); }
+      x.fillStyle = '#f5f5f5'; x.fillText(label, w / 2, h * .42);
     });
     const t = mkTex(canvas); const pl = new THREE.Mesh(new THREE.PlaneGeometry(len, WH), new THREE.MeshStandardMaterial({ map: t, roughness: .95 }));
     pl.position.set(cx, WH / 2, cz); pl.rotation.y = Math.atan2(nx, nz); pl.userData.kind = 'wall'; root.add(pl); wallMeshes.push(pl);
@@ -499,6 +542,18 @@ export function buildLuckyShell(api) {
     x.fillStyle = '#e8740c'; x.font = 'bold 44px sans-serif'; x.textAlign = 'center'; x.fillText('OPEN', w / 2, 102); drawCat(x, 40, 44, .28, { mask: false });
     x.strokeStyle = '#666'; x.lineWidth = 3; x.beginPath(); x.moveTo(60, 30); x.lineTo(100, 4); x.lineTo(140, 30); x.stroke(); }), .6, .42, X(305), 2.0, Z(297) - .06, Math.PI);
   decal(tex(400, 520, (x) => drawCat(x, 200, 220, 1.2, { body: true })), 1.5, 1.95, X(335) - .035, 1.2, Z(283), -Math.PI / 2);
+  // Meeting Room／We are in a meeting（玻璃外側朝入口）
+  { const ax = X(228), az = Z(260), bx = X(281), bz = Z(297), len = Math.hypot(bx - ax, bz - az);
+    const nx = (bz - az) / len, nz = -(bx - ax) / len; const cx = (ax + bx) / 2 + nx * .08, cz = (az + bz) / 2 + nz * .08, ry = Math.atan2(nx, nz);
+    decal(tex(640, 240, (x, w, h) => { x.fillStyle = 'rgba(255,255,255,.0)'; x.clearRect(0, 0, w, h);
+      x.fillStyle = '#222'; x.font = 'bold 64px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Meeting Room', w / 2, h * .38);
+      x.font = '32px Georgia, serif'; x.fillText('We are in a meeting', w / 2, h * .72); }), 2.15, .8, cx, 1.55, cz, ry); }
+  // LUXCAT ECOSYSTEM（挖寶網後方玻璃朝入口／南側）
+  { const ax = X(272), az = Z(236), bx = X(300), bz = Z(236), len = Math.hypot(bx - ax, bz - az);
+    const nx = -(bz - az) / len, nz = (bx - ax) / len; const cx = (ax + bx) / 2 + nx * .08, cz = (az + bz) / 2 + nz * .08, ry = Math.atan2(nx, nz);
+    decal(tex(640, 200, (x, w, h) => { x.clearRect(0, 0, w, h);
+      x.fillStyle = '#111'; x.font = 'bold 52px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('LUXCAT ECOSYSTEM', w / 2, h * .35);
+      x.font = '26px sans-serif'; x.fillText('DREAM WISH IT.  ·  COMPANY SINCE', w / 2, h * .7); }), 1.85, .58, cx, 1.55, cz, ry); }
 
   // ---- 窗戶（白色格子窗框＋城市景色＋灰藍色綁起來的窗簾）----
   const city = mkTex(tex(512, 256, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#a9dcff'); gr.addColorStop(1, '#e8f6ff'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
@@ -524,7 +579,7 @@ export function buildLuckyShell(api) {
 
   // ---- 天花板設備：金色洞洞吊燈、黑色軌道燈、吊扇、LED 燈管、外露白色管線、監視器 ----
   const deco = new Map(); const dg = (k, g) => { if (!deco.has(k)) deco.set(k, []); deco.get(k).push(g); };
-  const pend = [[229, 173.75], [262.5, 173.75], [306, 173.75], [339.5, 173.75], [373, 173.75], [229, 229.75], [262.5, 229.75], [347, 229.75], [380.5, 229.75], [306, 268], [362, 267.5], [381, 267.5], [426, 184], [452, 198]];
+  const pend = [[216, 128], [249.5, 128], [302, 128], [335.5, 128], [369, 128], [402.5, 128], [229, 173.75], [262.5, 173.75], [306, 173.75], [339.5, 173.75], [373, 173.75], [229, 229.75], [262.5, 229.75], [347, 229.75], [380.5, 229.75], [306, 268], [362, 267.5], [381, 267.5], [452, 148], [470, 165]];
   for (const [px, py] of pend) { const x = X(px), z = Z(py); dg('cord', cylGeo(.006, .006, .52, x, WH - .26, z, 4)); dg('gold', cylGeo(.13, .13, .32, x, WH - .68, z, 16)); dg('glow', cylGeo(.1, .1, .02, x, WH - .845, z, 12)); }
   for (const [x1p, x2p, py] of [[200, 430, 128], [210, 400, 202], [24, 110, 271], [118, 165, 282], [430, 485, 270]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('tube', boxGeo(x2 - x1, .04, .06, (x1 + x2) / 2, WH - .03, z)); }
   for (const [x1p, x2p, py] of [[290, 322, 255], [420, 482, 205]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('black', boxGeo(x2 - x1, .04, .05, (x1 + x2) / 2, WH - .03, z));
