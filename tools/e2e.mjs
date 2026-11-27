@@ -395,6 +395,10 @@ const tg1 = await aimAndTransform(H1, I.chair, [-10.3, 3.0]);
 s = await st(A); let P1 = s.players.find(p => p.id === h1);
 ok('H1 點家具選取目標', tg1 === I.chair, 'target=' + tg1); ok('H1 變身成功（第 1 次）', P1.prop === I.chair && P1.tf === 1, JSON.stringify([P1.prop, P1.tf]));
 await A.waitForTimeout(300);
+// 各分頁（軟體算圖很慢）套用房主狀態的時間不一，改成輪詢等到所有人都看到椅子消失、位置到位，再判定（原本固定等 300ms 偶發失敗）
+for (let k = 0; k < 40; k++) { const vs = await visAll(I.chair), cs = await counts(), dp = await seeker.evaluate(id => __ph.disguisePos(id), h1);
+  if (vs.every(v => v === false) && cs.every(n => n === NP - 2) && dp && Math.hypot(dp[0] - PROPS[I.chair][1], dp[1] - PROPS[I.chair][2]) < .3) break; await A.waitForTimeout(100); }
+await seeker.waitForFunction(([id, y]) => { const q = __ph.disguiseYaw(id); return q != null && Math.abs(q - y) < .05; }, [h1, PROPS[I.chair][3] * Math.PI / 180], { timeout: 3000 }).catch(() => {});
 ok('變身＝取代：原本那張椅子在所有人畫面消失', (await visAll(I.chair)).every(v => v === false), JSON.stringify(await visAll(I.chair)));
 ok('家具總數不變（少 1 件真的，多 1 件假的）', (await counts()).every(n => n === NP - 2), JSON.stringify(await counts()));
 const dpos = await seeker.evaluate(id => __ph.disguisePos(id), h1);
@@ -414,6 +418,8 @@ await H1.evaluate(() => { __ph.cam.yaw += 1.2; }); await H1.waitForTimeout(200);
 ok('鎖定時轉鏡頭家具不會轉', Math.abs((await H1.evaluate(() => __ph.local.py)) - yaw1) < .01);
 if (H1._touch) await H1.tap('#lockBtn'); else await H1.keyboard.press('KeyR');
 await H1.waitForTimeout(200);
+// 家具朝向是每個畫面幀才跟著鏡頭，慢機器上 200ms 可能還沒更新一幀；輪詢到對齊為止
+await H1.waitForFunction(() => { const d = __ph.local.py - (__ph.cam.yaw + Math.PI); return Math.abs(Math.atan2(Math.sin(d), Math.cos(d))) < .01; }, null, { timeout: 3000 }).catch(() => {});
 const fol = await H1.evaluate(() => [__ph.local.py, __ph.cam.yaw + Math.PI]);
 ok('解鎖後家具跟著鏡頭方向', Math.abs(Math.atan2(Math.sin(fol[0] - fol[1]), Math.cos(fol[0] - fol[1]))) < .01);
 if (H1._touch) await H1.tap('#lockBtn'); else await H1.keyboard.press('KeyR');
