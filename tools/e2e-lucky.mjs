@@ -92,9 +92,9 @@ for (const p of [B, C]) {
 }
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= M.L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .3);
-const I = { desk: lid('longDesk', 262.5, 236), chair: lid('meshChair', 254.2, 245.1 + 0) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 346, 280), geode: lid('geode', 448, 119.2),
+const I = { desk: lid('longDesk', 262.5, 234.3), chair: lid('meshChair', 253.6, 243.9) , ac: lid('wallAC', 452, 241), statue: lid('luckyCatStatue', 346, 280), geode: lid('geode', 448, 119.2),
   metal: lid('metalChair', 246, 268), white: lid('whiteDesk', 462, 140) };
-if (I.chair < 0) I.chair = PROPS.findIndex((p, i) => i >= M.L && p[0] === 'meshChair' && Math.hypot(p[1] - X(262.5), p[2] - Z(245.6)) < 1.0);
+if (I.chair < 0) I.chair = PROPS.findIndex((p, i) => i >= M.L && p[0] === 'meshChair' && Math.hypot(p[1] - X(262.5), p[2] - Z(243.9)) < 1.0);
 ok('找到測試用福貓家具', Object.values(I).every(i => i >= M.L), JSON.stringify(I));
 // 複合碰撞：長桌下方可鑽（桌面高 ~.72）＋椅子不是整塊
 const deskCols = await A.evaluate(i => __ph.propCols(i), I.desk), chairCols = await A.evaluate(i => __ph.propCols(i), I.chair);

@@ -10,7 +10,7 @@ const FIXED = new Set([
   'bathroomCabinet', 'bathroomCabinetDrawer',
   'toilet', 'toiletSquare', 'bathroomSink', 'bathroomSinkSquare', 'shower', 'showerRound', 'bathtub', 'towelRack',
   'cabinetTelevision', 'lockers', 'vendingMachine', 'snackCabinet', 'waterCooler', 'waterDispenser',
-  'piano', 'pingPong', 'foosball', 'arcade', 'gridPanel',
+  'piano', 'pingPong', 'foosball', 'arcade', 'gridPanel', 'longDesk',
   'woodCounter', 'woodSink', 'kitchenIsland', 'wireRack', 'woodWardrobe',
   'treasureCounter', 'copier', 'glassFridge', 'luckyReception',
 ]);

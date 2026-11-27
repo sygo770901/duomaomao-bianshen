@@ -22,7 +22,7 @@ export const ROOMS = [
   { id: 'small', name: '草皮辦公區', at: [460, 148], sure: true },
   { id: 'read', name: '閱覽區', at: [160, 200], sure: false },
   { id: 'open', name: '開放辦公區', at: [300, 202], sure: true },
-  { id: 'cafe', name: '福貓挖寶網', at: [336, 250], sure: true },
+  { id: 'cafe', name: '福貓挖寶網', at: [332, 258], sure: true },
   { id: 'lift', name: '電梯廳', at: [333, 312], sure: false },
 ];
 
@@ -33,8 +33,8 @@ const WALLS = [
   [[12, 304], [12, 250], 'out'], [[12, 250], [23, 240], 'out'], [[23, 240], [23, 216], 'out'], [[23, 216], [36, 216], 'out'],
   [[36, 216], [41, 221], 'out'], [[41, 221], [53, 211], 'out'], [[53, 211], [58, 190], 'out'],
   [[108, 152], [122, 151], 'out'], [[122, 151], [128, 142], 'out'], [[128, 142], [158, 124], 'out'], [[158, 124], [172, 112], 'out'],
-  [[172, 112], [447, 112], 'out'], [[447, 112], [459, 123], 'out'], [[459, 123], [487, 123], 'out'], [[487, 123], [487, 241], 'out'],
-  [[460, 306], [385, 306], 'out'], [[385, 297], [335, 297], 'out'], [[335, 297], [281, 297], 'glassB', { gaps: [[17, 43]] }], [[281, 304], [12, 304], 'out'],
+  [[172, 112], [447, 112], 'out'], [[447, 112], [459, 123], 'out'], [[459, 123], [487, 123], 'out'], [[487, 123], [487, 306], 'out'],
+  [[487, 306], [385, 306], 'out'], [[385, 297], [335, 297], 'out'], [[335, 297], [281, 297], 'glassB', { gaps: [[17, 43]] }], [[281, 304], [12, 304], 'out'],
   // 電梯廳（入口外）
   [[281, 297], [281, 322], 'out'], [[281, 322], [385, 322], 'out'], [[385, 322], [385, 297], 'out'],
   // 老闆辦公室
@@ -114,32 +114,33 @@ function deskCluster(xs, seamY) {
   for (const x of xs) { longDesk(x, seamY - 6.3, -1); longDesk(x, seamY + 6.3, +1); }
 }
 
-// 窗邊連續長桌（標註 4／P04／P05）：面窗、中間白色格柵；柱列（270–282）處留空
-for (const x of [216, 249.5, 302, 335.5, 369, 402.5, 408]) longDesk(x, 120.5, +1);
-// 中間兩組雙排（北側東端延伸，與窗邊列同樣連續）
-deskCluster([229, 262.5], 173.75); deskCluster([306, 339.5, 373, 406.5], 173.75);
-deskCluster([229, 262.5], 229.75); deskCluster([347, 380.5], 229.75);
-for (const x of [229, 245.75, 262.5, 306, 339.5, 373, 406.5]) A('gridPanel', x, 173.75, 0);
-A('gridPanel', 245.75, 229.75, 0); A('gridPanel', 363.75, 229.75, 0);
-// 窗邊／桌列白色 X 隔板（木柱在 buildLuckyShell）
-for (const x of [216, 249.5, 302, 335.5, 369, 402.5, 416]) A('gridPanel', x, 136, 0);
-A('gridPanel', 229, 229.75, 0); A('gridPanel', 347, 229.75, 0);
-// 窗邊走道雜物（標註 3：此帶不是獨立房間；P05 走道有紙箱／袋子。桌列依照片與標註 4 保留）
-A('cardboardBoxClosed', 230, 148, 15); A('cardboardBoxOpen', 238, 150, -20); A('cardboardBoxClosed', 318, 148, 8);
-A('cardboardBoxClosed', 355, 151, -12); A('toteBag', 242, 146, 20); A('toteBag', 360, 147, -15);
-A('toteBag', 390, 145, 10); A('cardboardBoxOpen', 390, 152, 90); A('cardboardBoxClosed', 408, 148, 0);
-A('extinguisher', 424, 140, 0); A('extinguisher', 427, 140, 0);
+// 靠窗只有窗簾（標註 1）：不再放窗邊長桌／椅。窗簾在 WIN。影印機仍留西端（P11／P16）。
+// 北側桌列（標註 2）：連續一排，稍微靠窗；東端白色鐵網（標註 4，P04）
+const UPPER_SEAM = 170; // 比 v20 的 173.75 略靠窗；再往北會壓到 y=144 出生點
+deskCluster([216, 249.5, 283, 316.5, 350, 383.5, 417], UPPER_SEAM);
+for (const x of [216, 249.5, 283, 316.5, 350, 383.5, 417]) A('gridPanel', x, UPPER_SEAM, 0);
+A('gridPanel', 432, 170, 0); A('gridPanel', 440, 174, 0);
+A('extinguisher', 428, 150, 0); A('extinguisher', 431, 150, 0);
+// 南側桌列（標註 3）：閃電／Z 形。x=305 入口走道必須留空（再連過去會擋路與出生點）
+deskCluster([229, 262.5], 228);
+deskCluster([347], 230);
+deskCluster([380.5], 240);
+for (const x of [229, 245.75, 262.5]) A('gridPanel', x, 228, 0);
+A('gridPanel', 347, 230, 0);
+A('gridPanel', 380.5, 240, 0);
 // 影印區：影印機＋證書在老闆辦公室東牆外側（北窗長桌西端），木紋儲櫃沿牆
 A('copier', 206, 130, 90); A('cardboardBoxClosed', 206, 142, 15); A('cardboardBoxClosed', 212, 144, -10);
 A('woodWardrobe', 202.6, 154, 90); A('woodWardrobe', 202.6, 168, 90);
 onWall('certFrame', 'v', 197, +1, 128, 1.7);
-A('standFan', 424, 152, -120); A('pottedPlant', 286, 132, 0); // 銅扇從斜牆東開口移開 A('trashcan', 283, 202, 0);
-A('pottedPlant', 403, 202, 0); A('officeCat', 292, 210, 30);
+A('standFan', 424, 152, -120); A('pottedPlant', 286, 132, 0);
+A('trashcan', 283, 198, 0);
+A('pottedPlant', 403, 202, 0); A('officeCat', 292, 198, 30);
 onWall('clock', 'h', 112, +1, 276, 2.2, true);
-// 吊燈：北窗長桌、中島上方
-for (const x of [230, 280, 330, 385]) A('goldPendant', x, 132, 0, 2.42);
-A('goldPendant', 250, 200, 0, 2.42); A('goldPendant', 370, 200, 0, 2.42);
-A('goldPendant', 350, 262, 0, 2.42); A('goldPendant', 390, 262, 0, 2.42);
+// 吊燈：北側桌列、中島上方（P03 四盞穿孔金燈）
+for (const x of [230, 283, 330, 383]) A('goldPendant', x, 170, 0, 2.42);
+A('goldPendant', 250, 200, 0, 2.42); A('goldPendant', 350, 230, 0, 2.42);
+A('goldPendant', 350, 267, 0, 2.42); A('goldPendant', 364, 267, 0, 2.42);
+A('goldPendant', 378, 267, 0, 2.42); A('goldPendant', 392, 267, 0, 2.42);
 // 草皮辦公區：白色書桌、窗邊矮木櫃、紫晶洞、銅色立扇
 for (const x of [448, 466, 484]) A('woodCounter', x, 119.2, 0);
 A('geode', 448, 119.2, 20, .95); A('geode', 468, 119.2, -15, .95); A('geode', 482, 119.2, 8, .95);
@@ -163,29 +164,31 @@ A('ovalTable', 246, 280, 0);
 A('metalChair', 246, 268, 0); A('metalChair', 258, 280, 90); A('metalChair', 246, 292, 180); A('metalChair', 234, 280, -90);
 A('cupSet', 246, 280, 0, .74); A('plantSmall1', 268, 270, 0);
 A('geode', 217.5, 268, 25); A('geode', 224, 294, -12); A('geode', 248, 296, 8);
-// 福貓挖寶網：走廊東側（Meeting Room 在西，中間走道暢通），右端靠木柱
-A('treasureCounter', 336, 252, 0);
-A('cardboardBoxClosed', 324, 262, 15); A('cardboardBoxClosed', 328, 265, -8); A('cardboardBoxOpen', 330, 262, 90);
+// 福貓挖寶網櫃台：標註 6 框內東半（再往西會擋入口 x=305；P15 櫃台在走道右側）
+A('treasureCounter', 332, 258, 0);
+A('cardboardBoxClosed', 318, 270, 15); A('cardboardBoxClosed', 324, 272, -8); A('cardboardBoxOpen', 322, 270, 90);
 // 入口區植物（拿掉與中島衝突的接待櫃台）
 A('pottedPlant', 286.5, 291, 0);
 // 電梯廳
 A('pottedPlant', 290, 316, 0); A('trashcan', 376, 316, 0); A('woodBench', 360, 318.5, 0);
 // 茶水間：南牆由東（左，面向北看時）到西：玻璃門冰箱、飲水機、木櫃微波爐／水槽、白色鐵架
-A('glassFridge', 404, 299.2, 180); A('waterDispenser', 392, 299.8, 180);
+A('glassFridge', 404, 291, 180); A('waterDispenser', 392, 291, 180);
 A('woodCounter', 380, 290.6, 180); A('kitchenMicrowave', 380, 291, 180, .9);
 A('woodSink', 368, 290.6, 180); A('woodCounter', 356, 290.6, 180);
-A('kettle', 360, 290, 0, .9); A('wireRack', 350, 292, 180);
+A('kettle', 360, 290, 0, .9); A('wireRack', 348, 291, 180);
 A('kitchenIsland', 371.5, 267.5, 0);
 // 大福貓在中島右側（面向北／辦公區），背後白牆在 shell 裡
 A('luckyCatStatue', 346, 280, 180); onWall('foodFrame', 'v', 421, -1, 274, 1.45);
-onWall('potShelf', 'h', 297, -1, 372, 1.55, true); onWall('potShelf', 'h', 297, -1, 385, 1.55, true);
+onWall('potShelf', 'h', 297, -1, 368, 1.55, true); onWall('potShelf', 'h', 297, -1, 378, 1.55, true); onWall('potShelf', 'h', 297, -1, 388, 1.55, true);
 A('trashcan', 338, 276, 0); A('standFan', 400, 270, -60);
+A('cardboardBoxClosed', 334, 272, 20); A('cardboardBoxClosed', 337, 275, -10, .62); A('cardboardBoxOpen', 332, 276, 90);
+A('cardboardBoxClosed', 330, 285, 5); A('cardboardBoxClosed', 328, 288, 15, .62);
 // 儲藏室：兩側木紋高櫃、紙箱
 for (const y of [258.6, 273.8, 289]) A('woodWardrobe', 426.3, y, 90);
 for (const y of [276, 291.2]) A('woodWardrobe', 454.7, y, -90);
 A('cardboardBoxClosed', 437, 300, 0); A('cardboardBoxClosed', 444, 300, 15); A('cardboardBoxOpen', 440, 291, 90); A('cardboardBoxClosed', 437, 300, 8, .62);
 onWall('wallAC', 'h', 241, +1, 452, 2.32);
-// 陽台（標註 5）：清潔工具＋欄杆（欄杆在 shell）；P07 開口另一側可見冰箱與鐵架
+// 陽台（標註 5）：清潔工具；外側為高牆（WALLS out）。P07 開口另一側可見冰箱與鐵架
 A('wireRack', 481.3, 256, -90); A('wireRack', 481.3, 271, -90); A('glassFridge', 478, 250, 90);
 A('cardboardBoxClosed', 470, 297, 0); A('broom', 466, 300, 0); A('broom', 472, 248, 20);
 A('bucket', 468, 283, 0); A('bucket', 475, 300, 15); A('broom', 482, 290, -20);
@@ -293,22 +296,19 @@ export function luckyProc(THREE, name, g, add, m) {
     add(.9, .84, .6, '#b5845a', 0, .44, 0); add(.92, .04, .62, '#f4f3ef', 0, .88, 0); add(.88, .06, .02, '#4e342e', 0, .03, .29);
     add(.008, .7, .01, '#8d6e4c', 0, .46, .301); for (const sx of [-.08, .08]) add(.02, .12, .02, '#cfcfcf', sx, .7, .31);
     if (name === 'woodSink') { add(.44, .02, .34, '#b0bec5', 0, .9, 0); add(.38, .03, .28, '#78909c', 0, .895, 0); cyl(.015, .015, .24, '#cfd8dc', 0, 1.02, -.2, 8); add(.02, .02, .16, '#cfd8dc', 0, 1.13, -.13); }
-  } else if (name === 'kitchenIsland') { // 長吧台：白檯面、淺木飾帶、淺灰門板、兩口電磁爐
-    add(3.35, .82, .78, '#cfd3d6', 0, .43, 0);
-    add(3.42, .06, .86, '#d7c4a3', 0, .87, 0);
-    add(3.46, .05, .9, '#f4f2ec', 0, .925, 0);
-    for (const ox of [-.95, .95]) {
-      add(.5, .01, .36, '#1a1a1a', ox, .955, 0);
-      for (const [sx, sz] of [[-.14, -.08], [.14, -.08], [-.14, .08], [.14, .08]]) cyl(.08, .08, .004, '#3a3a3a', ox + sx, .962, sz, 20);
-    }
+  } else if (name === 'kitchenIsland') { // 長吧台：白檯、厚淺木飾帶、淺灰白門板、兩口方形電磁爐（P03）
+    add(3.5, .78, .82, '#d8dce0', 0, .41, 0);
+    add(3.58, .11, .90, '#e0c8a0', 0, .855, 0);
+    add(3.64, .06, .96, '#f7f6f2', 0, .94, 0);
+    for (const ox of [-.95, 1.05]) add(.46, .008, .34, '#1a1a1a', ox, .975, 0);
   } else if (name === 'waterDispenser') { // 黑色冰熱飲水機
     add(.32, 1.0, .33, '#1f1f1f', 0, .5, 0); add(.26, .2, .02, '#333', 0, .76, .17); add(.05, .05, .05, '#e53935', -.06, .76, .19); add(.05, .05, .05, '#1e88e5', .06, .76, .19);
     add(.24, .03, .1, '#888', 0, .55, .17); cyl(.12, .12, .05, '#9e9e9e', 0, 1.03, 0, 14);
   } else if (name === 'wireRack') { // 白色鐵架（擴大機、路由器、紙箱）
     for (const sx of [-.43, .43]) for (const sz of [-.2, .2]) cyl(.012, .012, 1.6, '#f0f0f0', sx, .8, sz, 6);
     for (const y of [.06, .56, 1.06, 1.56]) { add(.9, .015, .44, '#e9e9e9', 0, y, 0); for (let i = 0; i < 5; i++) add(.88, .01, .008, '#d5d5d5', 0, y + .01, -.18 + i * .09); }
-    add(.4, .12, .3, '#1c1c1c', -.1, .64, 0); add(.08, .02, .01, '#4fc3f7', .02, .66, .151); add(.25, .04, .15, '#fafafa', .12, 1.1, 0);
-    for (const sx of [.04, .12, .2]) add(.012, .14, .012, '#333', sx, 1.19, -.06); add(.35, .3, .3, '#c49a6c', .15, .22, 0);
+    add(.42, .28, .32, '#f2f2f0', -.12, .72, 0); add(.40, .02, .30, '#cfcfc9', -.12, .86, 0); add(.06, .01, .01, '#888', .02, .78, .165);
+    add(.25, .08, .18, '#fafafa', .16, 1.14, 0); add(.35, .28, .3, '#c49a6c', .15, .22, 0);
   } else if (name === 'dishRack') { // 碗盤架
     add(.45, .03, .3, '#9e9e9e', 0, .015, 0); for (const sx of [-.2, .2]) add(.01, .18, .28, '#bdbdbd', sx, .1, 0);
     for (let i = 0; i < 4; i++) { const pl = cyl(.1, .1, .012, '#ffffff', -.12 + i * .06, .12, 0, 16); pl.rotation.z = Math.PI / 2; }
@@ -337,7 +337,7 @@ export function luckyProc(THREE, name, g, add, m) {
     add(.11, .32, .11, '#ffc21a', .33, .66, .06, -.35); mesh(new THREE.SphereGeometry(.08, 10, 8), Y, .38, .84, .1); add(.045, .12, .045, '#ffc21a', .38, .95, .1); // 比讚
     add(.1, .28, .1, '#ffc21a', -.31, .48, .04, .25);
     const tail = cyl(.04, .05, .34, O, -.05, .3, -.3, 8); tail.rotation.x = -.9;
-    g.scale.setScalar(1.2);
+    g.scale.setScalar(1.35);
   } else if (name === 'geode') { // 紫晶洞（木座）
     add(.56, .3, .46, '#a1774f', 0, .15, 0); add(.6, .03, .5, '#8b6542', 0, .31, 0);
     const outer = new THREE.MeshStandardMaterial({ color: '#5b4a40', roughness: .95, side: THREE.DoubleSide });
@@ -410,10 +410,10 @@ export function luckyProc(THREE, name, g, add, m) {
     const glass = new THREE.Mesh(new THREE.BoxGeometry(2.1, .02, .74), new THREE.MeshStandardMaterial({ color: '#d9eef8', transparent: true, opacity: .35, roughness: .06, metalness: .1 }));
     glass.position.set(0, 1.055, 0); g.add(glass);
     // 西側較淺的斜切翼：亮黑檯面＋玻璃
-    add(.62, 1.0, .42, cream, -1.28, .5, -.1);
-    add(.62, .02, .44, '#111', -1.28, 1.01, -.1);
+    add(.5, 1.0, .42, cream, -.95, .5, -.1);
+    add(.5, .02, .44, '#111', -.95, 1.01, -.1);
     const wg = new THREE.Mesh(new THREE.BoxGeometry(.64, .016, .46), new THREE.MeshStandardMaterial({ color: '#d9eef8', transparent: true, opacity: .35, roughness: .06 }));
-    wg.position.set(-1.28, 1.05, -.1); g.add(wg);
+    wg.position.set(-.95, 1.05, -.1); g.add(wg);
     const chMat = new THREE.MeshStandardMaterial({ color: cream, roughness: .7 });
     const ch = new THREE.Mesh(new THREE.BoxGeometry(.7, 1.0, .04), chMat);
     ch.position.set(-1.05, .5, .28); ch.rotation.y = .4; g.add(ch);
@@ -453,15 +453,16 @@ export function luckyProc(THREE, name, g, add, m) {
     add(.04, .04, .04, '#222', -.26, .18, .05); add(.04, .04, .04, '#222', -.26, .18, -.05);
     add(.2, .05, .05, '#e08a20', .28, .08, .1, .6);
     for (const z of [-.08, .08]) add(.2, .02, .03, '#d17818', -.02, .16, z);
-  } else if (name === 'glassFridge') { // 玻璃門冰箱
-    add(.7, 1.85, .62, '#c5c8cc', 0, .925, 0);
-    add(.66, .04, .6, '#9ea3a8', 0, .02, 0);
-    add(.62, 1.55, .02, '#1a1a1a', 0, 1.0, .32);
-    const gd = new THREE.Mesh(new THREE.BoxGeometry(.58, 1.5, .02), new THREE.MeshStandardMaterial({ color: '#9ec4d4', transparent: true, opacity: .35, roughness: .08, metalness: .2 }));
-    gd.position.set(0, 1.0, .33); g.add(gd);
-    add(.04, 1.5, .03, '#333', .29, 1.0, .33); add(.03, .22, .04, '#888', .31, 1.0, .35);
-    for (const y of [.45, .85, 1.25]) { add(.5, .015, .4, '#ddd', 0, y, -.05); add(.08, .2, .08, '#c62828', -.15, y + .12, .1); add(.08, .22, .08, '#1565c0', .12, y + .13, .1); }
-    add(.12, .04, .04, '#2e7d32', 0, 1.78, .32);
+  } else if (name === 'glassFridge') { // 不鏽鋼玻璃門冰箱（P03）
+    const st = new THREE.MeshStandardMaterial({ color: '#c5ccd2', metalness: .45, roughness: .3 });
+    mesh(new THREE.BoxGeometry(.74, 1.95, .64), st, 0, .975, 0);
+    add(.7, .04, .62, '#6d757b', 0, .02, 0);
+    const gd = new THREE.Mesh(new THREE.BoxGeometry(.58, 1.62, .02), new THREE.MeshStandardMaterial({ color: '#6a8a9a', transparent: true, opacity: .45, roughness: .06, metalness: .35 }));
+    gd.position.set(0, 1.05, .33); g.add(gd);
+    add(.035, 1.62, .04, '#5a6166', .30, 1.05, .34);
+    add(.03, .55, .03, '#cfd5d8', .34, 1.05, .36);
+    for (const y of [.45, .85, 1.25, 1.6]) add(.55, .012, .42, '#d0d4d6', 0, y, -.04);
+    add(.1, .03, .04, '#2e7d32', 0, 1.88, .32);
   } else if (name === 'toteBag') { // 紙袋／提袋
     const c = ['#c62828', '#1565c0', '#f9a825', '#5d4037'][Math.abs(Math.round((g.position?.x || 0) * 10)) % 4] || '#c62828';
     add(.18, .28, .08, c, 0, .16, 0); add(.16, .02, .06, '#eee', 0, .31, 0);
@@ -537,28 +538,15 @@ export function buildLuckyShell(api) {
   for (const [x1p, y1p, x2p, y2p] of COLUMNS) { const x1 = X(x1p), x2 = X(x2p), z1 = Z(y1p), z2 = Z(y2p);
     addGeo('#b9b9b6', boxGeo(x2 - x1, WH, z2 - z1, (x1 + x2) / 2, WH / 2, (z1 + z2) / 2)); col(x1, x2, z1, z2, WH, { wall: true }); }
   // 開放辦公區：淺木方柱、黑色圓柱管
-  for (const [px, py] of [[393, 173.75], [207.5, 229.75], [400.5, 229.75], [216, 136], [249.5, 136], [335.5, 136], [369, 136], [402.5, 136], [416, 136], [216, 173.75], [373, 173.75], [406.5, 173.75], [229, 229.75], [347, 229.75], [352, 250]]) { const x = X(px), z = Z(py);
+  for (const [px, py] of [[216, 170], [283, 170], [350, 170], [417, 170], [229, 228], [347, 230], [380.5, 240], [352, 250]]) { const x = X(px), z = Z(py);
     addGeo('#dcc29b', boxGeo(.2, WH, .2, x, WH / 2, z)); col(x - .1, x + .1, z - .1, z + .1, WH); }
-  { const x = X(284), z = Z(173.75); addGeo('#1e1e1e', cylGeo(.12, .12, WH, x, WH / 2, z, 14)); col(x - .12, x + .12, z - .12, z + .12, WH); }
+  { const x = X(284), z = Z(170); addGeo('#1e1e1e', cylGeo(.12, .12, WH, x, WH / 2, z, 14)); col(x - .12, x + .12, z - .12, z + .12, WH); }
   // 電梯門（電梯廳北牆）
   for (const px of [312, 354]) { const x = X(px), z = Z(322) - TO / 2 - .02;
     addGeo('#b0bac2', boxGeo(1.05, 2.15, .04, x, 1.075, z)); addGeo('#6b7780', boxGeo(.02, 2.15, .05, x, 1.075, z - .005)); addGeo('#37474f', boxGeo(.36, .14, .03, x, 2.35, z));
     addGeo('#cfd8dc', boxGeo(.08, .16, .03, x + .7, 1.15, z)); }
 
-  // 陽台欄杆（標註 5：東側＋南側開口）
-  { const rail = (ax, ay, bx, by) => {
-      const x0 = X(ax), z0 = Z(ay), x1 = X(bx), z1 = Z(by);
-      const len = Math.hypot(x1 - x0, z1 - z0), ux = (x1 - x0) / len, uz = (z1 - z0) / len;
-      const n = Math.max(2, Math.round(len / .28));
-      for (let i = 0; i <= n; i++) {
-        const t = i / n, px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
-        addGeo('#6d7a84', boxGeo(.035, 1.02, .035, px, .51, pz));
-      }
-      for (const y of [.12, .48, .88]) addGeo('#5c6770', boxGeo(len + .04, .03, .03, (x0 + x1) / 2, y, (z0 + z1) / 2, Math.atan2(-(z1 - z0), x1 - x0)));
-      wallCols(x0, z0, x1, z1, .08, { wall: true });
-    };
-    rail(487, 241, 487, 306); rail(487, 306, 460, 306);
-  }
+  // 陽台外側改為高牆（標註 5；外牆已在 WALLS 以 out 接回全高）。
   // 草皮房西門（微開的門扇，鉸在北側門框）
   { const hx = X(434) + .04, hz = Z(121.2), ry = -.55;
     addGeo('#d9c4a0', boxGeo(.06, 2.05, .78, hx + Math.sin(ry) * .39, 1.02, hz + Math.cos(ry) * .39, ry + Math.PI / 2));
@@ -674,6 +662,28 @@ export function buildLuckyShell(api) {
     }
     col(x - .95, x + .95, z - .08, z + .08, 2.3, { wall: true });
   }
+  // 白牆西側的棕色門／電梯門（P03 右側）
+  { const x = X(327), z = Z(290);
+    addGeo('#6b4a2e', boxGeo(1.05, 2.15, .08, x, 1.08, z));
+    addGeo('#3d2a18', boxGeo(1.12, .06, .1, x, 2.18, z));
+    addGeo('#c9a24a', boxGeo(.04, .22, .04, x + .38, 1.05, z + .06));
+    col(x - .55, x + .55, z - .08, z + .08, 2.2, { wall: true });
+  }
+  // 茶水間東段背牆（冰箱／飲水機與木櫃同深，P03）
+  { const z = Z(297) - 0.06, x1 = X(386), x2 = X(418);
+    addGeo('#efefe8', boxGeo(x2 - x1, 2.35, .06, (x1 + x2) / 2, 1.18, z));
+    col(x1, x2, z - .05, z + .05, 2.35, { wall: true });
+  }
+  // 軌道射燈（P03 天花板，福貓白牆前方）
+  { const z = Z(282), y = 2.72;
+    const x0 = X(330), x1 = X(358);
+    addGeo('#1a1a1a', boxGeo(Math.abs(x1 - x0) + .08, .025, .03, (x0 + x1) / 2, y, z));
+    for (const px of [332, 338, 344, 350, 356]) {
+      const x = X(px);
+      addGeo('#1a1a1a', cylGeo(.045, .05, .07, x, y - .05, z, 10));
+      addGeo('#2a2a2a', cylGeo(.035, .04, .05, x, y - .1, z, 10));
+    }
+  }
 
   // ---- 窗戶（白色格子窗框＋城市景色＋灰藍色綁起來的窗簾）----
   const city = mkTex(tex(512, 256, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#a9dcff'); gr.addColorStop(1, '#e8f6ff'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
@@ -699,7 +709,7 @@ export function buildLuckyShell(api) {
 
   // ---- 天花板設備：金色洞洞吊燈、黑色軌道燈、吊扇、LED 燈管、外露白色管線、監視器 ----
   const deco = new Map(); const dg = (k, g) => { if (!deco.has(k)) deco.set(k, []); deco.get(k).push(g); };
-  const pend = [[216, 128], [249.5, 128], [302, 128], [335.5, 128], [369, 128], [402.5, 128], [229, 173.75], [262.5, 173.75], [306, 173.75], [339.5, 173.75], [373, 173.75], [229, 229.75], [262.5, 229.75], [347, 229.75], [380.5, 229.75], [306, 268], [362, 267.5], [381, 267.5], [452, 148], [470, 165]];
+  const pend = [[216, 170], [249.5, 170], [283, 170], [316.5, 170], [350, 170], [383.5, 170], [417, 170], [229, 228], [262.5, 228], [347, 230], [380.5, 240], [306, 268], [362, 267.5], [381, 267.5], [452, 148], [470, 165]];
   for (const [px, py] of pend) { const x = X(px), z = Z(py); dg('cord', cylGeo(.006, .006, .52, x, WH - .26, z, 4)); dg('gold', cylGeo(.13, .13, .32, x, WH - .68, z, 16)); dg('glow', cylGeo(.1, .1, .02, x, WH - .845, z, 12)); }
   for (const [x1p, x2p, py] of [[200, 430, 128], [210, 400, 202], [24, 110, 271], [118, 165, 282], [430, 485, 270]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('tube', boxGeo(x2 - x1, .04, .06, (x1 + x2) / 2, WH - .03, z)); }
   for (const [x1p, x2p, py] of [[290, 322, 255], [420, 482, 205]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('black', boxGeo(x2 - x1, .04, .05, (x1 + x2) / 2, WH - .03, z));

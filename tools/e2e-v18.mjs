@@ -41,14 +41,18 @@ const info = await A.evaluate(() => {
   return { rooms, N, count, near: {
     copier: near('copier', 206, 130),
     cert: near('certFrame', 197, 128, .8),
-    treasure: near('treasureCounter', 336, 252),
+    treasure: near('treasureCounter', 332, 258),
     geodeGrass: near('geode', 448, 119.2),
     geodeMeet: near('geode', 217.5, 268),
     whiteDesk: near('whiteDesk', 462, 140),
     ovalMeet: near('ovalTable', 246, 280),
     statue: near('luckyCatStatue', 346, 280),
     island: near('kitchenIsland', 371.5, 267.5),
-    cat: near('officeCat', 292, 210),
+    cat: near('officeCat', 292, 198),
+    windowDesk: near('longDesk', 335.5, 120.5),
+    upperDesk: near('longDesk', 316.5, 163.7),
+    eastMesh: near('gridPanel', 440, 174),
+    lowerDesk: near('longDesk', 262.5, 234.3),
     pendant: count('goldPendant') >= 4,
     bistroGone: !P.slice(L, L + N).some(p => p[0] === 'bistroChair' && Math.hypot(p[1] - X(444), p[2] - Z(198)) < 1.2),
   }, count: { goldPendant: count('goldPendant'), copier: count('copier'), whiteDesk: count('whiteDesk'), treasureCounter: count('treasureCounter') } };
@@ -80,9 +84,14 @@ ok('草皮西牆門洞兩側仍擋人', await blocked(X(434), Z(116)) && await b
 ok('機房已改名且標確定', roomMap.spare?.name === '機房' && roomMap.spare?.sure === '1', JSON.stringify(roomMap.spare));
 ok('陽台已改名且標確定', roomMap.equip?.name === '陽台' && roomMap.equip?.sure === '1', JSON.stringify(roomMap.equip));
 ok('窗邊不再是獨立房間', !roomMap.north, JSON.stringify(roomMap.north));
-ok('陽台欄杆會擋人', await blocked(X(487), Z(270)));
+ok('陽台外牆會擋人', await blocked(X(487), Z(270)));
 ok('陽台內可走', await freeAt(X(470), Z(262)));
 
+ok('靠窗不再有辦公桌', !info.near.windowDesk, 'windowDesk=' + info.near.windowDesk);
+ok('北側桌列靠窗且連續', info.near.upperDesk);
+ok('東端白色鐵網', info.near.eastMesh);
+ok('南側桌列閃電段仍連續', info.near.lowerDesk);
+ok('入口直走 x=305 在櫃台高度仍可通', await freeAt(X(305), Z(258)));
 ok('入口直走 x=305 在挖寶網隔間旁仍可通', await freeAt(X(305), Z(236)));
 ok('LUXCAT 玻璃隔間會擋人', await blocked(X(334), Z(236)));
 ok('會客室門口可過', await freeAt(X(266.1), Z(286.6)));
@@ -96,7 +105,7 @@ ok('開局載入福貓辦公室', (await st(A)).map === 'lucky');
 const PROPS = await A.evaluate(() => __ph.PROPS);
 const L = await A.evaluate(() => __ph.LUCKY_START);
 const lid = (name, px, py) => PROPS.findIndex((p, i) => i >= L && p[0] === name && Math.hypot(p[1] - X(px), p[2] - Z(py)) < .45);
-const tid = lid('treasureCounter', 336, 252);
+const tid = lid('treasureCounter', 332, 258);
 ok('找得到挖寶網櫃台', tid >= L, String(tid));
 await B.evaluate(i => { const q = __ph.propPos(i); __ph.teleport(q[0], q[2] + 1.6, 0); __ph.lookAt(q[0], q[2], .3); }, tid);
 await B.waitForTimeout(400); await B.evaluate(i => __ph.setTarget(i), tid); await B.keyboard.press('KeyF'); await B.waitForTimeout(600);
