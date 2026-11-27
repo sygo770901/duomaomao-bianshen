@@ -22,7 +22,7 @@ export const ROOMS = [
   { id: 'small', name: '草皮辦公區', at: [460, 148], sure: true },
   { id: 'read', name: '閱覽區', at: [160, 200], sure: false },
   { id: 'open', name: '開放辦公區', at: [300, 202], sure: true },
-  { id: 'cafe', name: '福貓挖寶網', at: [332, 258], sure: true },
+  { id: 'cafe', name: '福貓挖寶網', at: [298, 263], sure: true },
   { id: 'lift', name: '電梯廳', at: [333, 312], sure: false },
 ];
 
@@ -33,7 +33,7 @@ const WALLS = [
   [[12, 304], [12, 250], 'out'], [[12, 250], [23, 240], 'out'], [[23, 240], [23, 216], 'out'], [[23, 216], [36, 216], 'out'],
   [[36, 216], [41, 221], 'out'], [[41, 221], [53, 211], 'out'], [[53, 211], [58, 190], 'out'],
   [[108, 152], [122, 151], 'out'], [[122, 151], [128, 142], 'out'], [[128, 142], [158, 124], 'out'], [[158, 124], [172, 112], 'out'],
-  [[172, 112], [447, 112], 'out'], [[447, 112], [459, 123], 'out'], [[459, 123], [487, 123], 'out'], [[487, 123], [487, 306], 'out'],
+  [[172, 112], [447, 112], 'out'], [[447, 112], [459, 123], 'out'], [[459, 123], [487, 123], 'out'], [[487, 123], [487, 241], 'out'],
   [[487, 306], [385, 306], 'out'], [[385, 297], [335, 297], 'out'], [[335, 297], [281, 297], 'glassB', { gaps: [[17, 43]] }], [[281, 304], [12, 304], 'out'],
   // 電梯廳（入口外）
   [[281, 297], [281, 322], 'out'], [[281, 322], [385, 322], 'out'], [[385, 322], [385, 297], 'out'],
@@ -80,10 +80,10 @@ export const WINDOWS = WIN.map(([o, line, s, c, w, curt]) => {
 });
 export const WINDOW_HOLES = WINDOWS.map(w => w.o === 'v' ? ['x', w.x, w.z, 1.55, w.w / 2 + .05, .78] : ['z', w.z, w.x, 1.55, w.w / 2 + .05, .78]);
 export const BOUNDS = { x1: X(12) + .2, x2: X(487) - .2, z1: Z(112) + .2, z2: Z(322) - .2 };
-export const HIDER_SPAWNS = [[232, 144], [262, 144], [300, 144], [340, 144], [232, 202], [300, 202], [342, 202], [306, 258]].map(([a, b]) => [X(a), Z(b)]);
+export const HIDER_SPAWNS = [[232, 144], [250, 144], [288, 194], [300, 194], [340, 194], [232, 194], [342, 194], [250, 248]].map(([a, b]) => [X(a), Z(b)]);
 export const SEEKER_SPAWN = [X(305), Z(312)];
 export const SEEKER_SPAWN2 = [X(332), Z(312)];
-export const LOBBY_AT = [X(300), Z(202)];
+export const LOBBY_AT = [X(288), Z(194)];
 export const LIGHTS = [[250, 165], [350, 165], [250, 225], [362, 225], [445, 200], [372, 280], [62, 271], [165, 148]].map(([a, b]) => [X(a), Z(b)]);
 
 // ---------- 家具（可變身）：[模型, x, z, 轉角, 高度y] ----------
@@ -114,31 +114,32 @@ function deskCluster(xs, seamY) {
   for (const x of xs) { longDesk(x, seamY - 6.3, -1); longDesk(x, seamY + 6.3, +1); }
 }
 
-// 靠窗只有窗簾（標註 1）：不再放窗邊長桌／椅。窗簾在 WIN。影印機仍留西端（P11／P16）。
-// 北側桌列（標註 2）：連續一排，稍微靠窗；東端白色鐵網（標註 4，P04）
-const UPPER_SEAM = 170; // 比 v20 的 173.75 略靠窗；再往北會壓到 y=144 出生點
-deskCluster([216, 249.5, 283, 316.5, 350, 383.5, 417], UPPER_SEAM);
-for (const x of [216, 249.5, 283, 316.5, 350, 383.5, 417]) A('gridPanel', x, UPPER_SEAM, 0);
-A('gridPanel', 432, 170, 0); A('gridPanel', 440, 174, 0);
-A('extinguisher', 428, 150, 0); A('extinguisher', 431, 150, 0);
-// 南側桌列（標註 3）：閃電／Z 形。x=305 入口走道必須留空（再連過去會擋路與出生點）
-deskCluster([229, 262.5], 228);
-deskCluster([347], 230);
-deskCluster([380.5], 240);
-for (const x of [229, 245.75, 262.5]) A('gridPanel', x, 228, 0);
-A('gridPanel', 347, 230, 0);
-A('gridPanel', 380.5, 240, 0);
+// 窗邊桌椅（v22 標註 2，紫框 plan 290–411, 128–177；對照 P05／P08／P04／P01）
+for (const x of [307, 340.33, 373.67]) longDesk(x, 135, +1);
+// 北側內桌列：白牆以東（v22 標註 3／4：牆西橙色區只留窗邊櫃子，撤掉桌椅）
+const UPPER_SEAM = 170;
+deskCluster([292, 316.5, 350, 383.5], UPPER_SEAM);
+for (const x of [292, 316.5, 350, 383.5]) A('gridPanel', x, UPPER_SEAM, 0);
+// v22 t84u：窗邊桌東端與草皮牆之間留走道（藍框 plan 408.7–431.9, 119.8–197.2）。撤掉此框內的最東桌組、立扇、滅火器。
+// 南側桌列（v22 標註 5，藍綠框 plan 212–405, 202–237）：連成一排。白牆（x=263–275）從中切開。
+const LOWER_SEAM = 219.7;
+deskCluster([228.3], LOWER_SEAM);
+deskCluster([294.9, 328.3, 361.6, 394.9], LOWER_SEAM);
+for (const x of [228.3, 294.9, 328.3, 361.6, 394.9]) A('gridPanel', x, LOWER_SEAM, 0);
+// 白色鐵網在兩排桌子之間（v22 標註 6，粉框 plan 305–401, 182–192；P04）
+for (const x of [314, 332.2, 350.4, 368.6, 386.8]) A('gridPanel', x, 187, 0);
 // 影印區：影印機＋證書在老闆辦公室東牆外側（北窗長桌西端），木紋儲櫃沿牆
 A('copier', 206, 130, 90); A('cardboardBoxClosed', 206, 142, 15); A('cardboardBoxClosed', 212, 144, -10);
 A('woodWardrobe', 202.6, 154, 90); A('woodWardrobe', 202.6, 168, 90);
 onWall('certFrame', 'v', 197, +1, 128, 1.7);
-A('standFan', 424, 152, -120); A('pottedPlant', 286, 132, 0);
+A('pottedPlant', 286, 132, 0);
 A('trashcan', 283, 198, 0);
 A('pottedPlant', 403, 202, 0); A('officeCat', 292, 198, 30);
 onWall('clock', 'h', 112, +1, 276, 2.2, true);
 // 吊燈：北側桌列、中島上方（P03 四盞穿孔金燈）
-for (const x of [230, 283, 330, 383]) A('goldPendant', x, 170, 0, 2.42);
-A('goldPendant', 250, 200, 0, 2.42); A('goldPendant', 350, 230, 0, 2.42);
+for (const x of [307, 340, 374]) A('goldPendant', x, 135, 0, 2.42);
+for (const x of [292, 330, 383]) A('goldPendant', x, 170, 0, 2.42);
+A('goldPendant', 310, 200, 0, 2.42); A('goldPendant', 360, 220, 0, 2.42);
 A('goldPendant', 350, 267, 0, 2.42); A('goldPendant', 364, 267, 0, 2.42);
 A('goldPendant', 378, 267, 0, 2.42); A('goldPendant', 392, 267, 0, 2.42);
 // 草皮辦公區：白色書桌、窗邊矮木櫃、紫晶洞、銅色立扇
@@ -147,7 +148,7 @@ A('geode', 448, 119.2, 20, .95); A('geode', 468, 119.2, -15, .95); A('geode', 48
 A('whiteDesk', 462, 140, 90); A('meshChair', 472, 140, 90); A('computerScreen', 464.2, 140, 90, .73);
 A('whiteDesk', 470, 165, 0); A('meshChair', 470, 174, 180); A('computerScreen', 470, 162.6, 0, .73);
 A('whiteDesk', 458, 190, -20); A('meshChair', 450, 198, 160); A('penCup', 458, 190, 10, .73);
-A('standFan', 430, 130, 20); A('standFan', 455, 155, -50); A('pottedPlant', 478, 200, 0);
+A('standFan', 455, 155, -50); A('pottedPlant', 478, 200, 0);
 // 閱覽區
 A('bookcaseOpen', 145, 184.5, 0); A('bookcaseOpen', 160, 184.5, 0); A('books', 152, 184, 0, .95);
 A('loungeChair', 148, 212, 150); A('loungeChair', 172, 214, -150); A('sideTable', 160, 224, 0); A('plantSmall2', 156, 224, 0, .85);
@@ -164,9 +165,9 @@ A('ovalTable', 246, 280, 0);
 A('metalChair', 246, 268, 0); A('metalChair', 258, 280, 90); A('metalChair', 246, 292, 180); A('metalChair', 234, 280, -90);
 A('cupSet', 246, 280, 0, .74); A('plantSmall1', 268, 270, 0);
 A('geode', 217.5, 268, 25); A('geode', 224, 294, -12); A('geode', 248, 296, 8);
-// 福貓挖寶網櫃台：標註 6 框內東半（再往西會擋入口 x=305；P15 櫃台在走道右側）
-A('treasureCounter', 332, 258, 0);
-A('cardboardBoxClosed', 318, 270, 15); A('cardboardBoxClosed', 324, 272, -8); A('cardboardBoxOpen', 322, 270, 90);
+// 福貓挖寶網櫃台（v22 標註 7，紅框 plan 277–318, 256–270）
+A('treasureCounter', 297.6, 263, 0);
+A('cardboardBoxClosed', 310, 274, 15); A('cardboardBoxClosed', 316, 276, -8); A('cardboardBoxOpen', 312, 274, 90);
 // 入口區植物（拿掉與中島衝突的接待櫃台）
 A('pottedPlant', 286.5, 291, 0);
 // 電梯廳
@@ -188,7 +189,7 @@ for (const y of [258.6, 273.8, 289]) A('woodWardrobe', 426.3, y, 90);
 for (const y of [276, 291.2]) A('woodWardrobe', 454.7, y, -90);
 A('cardboardBoxClosed', 437, 300, 0); A('cardboardBoxClosed', 444, 300, 15); A('cardboardBoxOpen', 440, 291, 90); A('cardboardBoxClosed', 437, 300, 8, .62);
 onWall('wallAC', 'h', 241, +1, 452, 2.32);
-// 陽台（標註 5）：清潔工具；外側為高牆（WALLS out）。P07 開口另一側可見冰箱與鐵架
+// 陽台（v22 標註 1）：清潔工具；東側外牆為半高牆（shell）。P07 開口另一側可見冰箱與鐵架
 A('wireRack', 481.3, 256, -90); A('wireRack', 481.3, 271, -90); A('glassFridge', 478, 250, 90);
 A('cardboardBoxClosed', 470, 297, 0); A('broom', 466, 300, 0); A('broom', 472, 248, 20);
 A('bucket', 468, 283, 0); A('bucket', 475, 300, 15); A('broom', 482, 290, -20);
@@ -538,7 +539,7 @@ export function buildLuckyShell(api) {
   for (const [x1p, y1p, x2p, y2p] of COLUMNS) { const x1 = X(x1p), x2 = X(x2p), z1 = Z(y1p), z2 = Z(y2p);
     addGeo('#b9b9b6', boxGeo(x2 - x1, WH, z2 - z1, (x1 + x2) / 2, WH / 2, (z1 + z2) / 2)); col(x1, x2, z1, z2, WH, { wall: true }); }
   // 開放辦公區：淺木方柱、黑色圓柱管
-  for (const [px, py] of [[216, 170], [283, 170], [350, 170], [417, 170], [229, 228], [347, 230], [380.5, 240], [352, 250]]) { const x = X(px), z = Z(py);
+  for (const [px, py] of [[292, 170], [350, 170], [228.3, 219.7], [328.3, 219.7], [394.9, 219.7], [352, 250]]) { const x = X(px), z = Z(py);
     addGeo('#dcc29b', boxGeo(.2, WH, .2, x, WH / 2, z)); col(x - .1, x + .1, z - .1, z + .1, WH); }
   { const x = X(284), z = Z(170); addGeo('#1e1e1e', cylGeo(.12, .12, WH, x, WH / 2, z, 14)); col(x - .12, x + .12, z - .12, z + .12, WH); }
   // 電梯門（電梯廳北牆）
@@ -546,7 +547,18 @@ export function buildLuckyShell(api) {
     addGeo('#b0bac2', boxGeo(1.05, 2.15, .04, x, 1.075, z)); addGeo('#6b7780', boxGeo(.02, 2.15, .05, x, 1.075, z - .005)); addGeo('#37474f', boxGeo(.36, .14, .03, x, 2.35, z));
     addGeo('#cfd8dc', boxGeo(.08, .16, .03, x + .7, 1.15, z)); }
 
-  // 陽台外側改為高牆（標註 5；外牆已在 WALLS 以 out 接回全高）。
+  // 陽台東側外牆：半高（v22 標註 1，藍框 plan 486–508, 244–311；高於舊欄杆、低於全高牆）
+  { const HH = WH / 2;
+    const x = X(487), z0 = Z(241), z1 = Z(306);
+    addGeo(C_OUT, boxGeo(TO, HH, z1 - z0, x, HH / 2, (z0 + z1) / 2));
+    addGeo(C_OUT, boxGeo(TO + .06, .06, z1 - z0 + .04, x, HH + .03, (z0 + z1) / 2));
+    col(x - TO / 2, x + TO / 2, z0, z1, HH, { wall: true });
+  }
+  // 開放辦公區白色隔牆（v22 標註 3，綠框 plan x=262.6–275.1, y=112–237.5）
+  { const x1 = X(262.57), x2 = X(275.13), z1 = Z(112) + TO / 2, z2 = Z(237.51);
+    addGeo(C_IN, boxGeo(x2 - x1, WH, z2 - z1, (x1 + x2) / 2, WH / 2, (z1 + z2) / 2));
+    col(x1, x2, z1, z2, WH, { wall: true });
+  }
   // 草皮房西門（微開的門扇，鉸在北側門框）
   { const hx = X(434) + .04, hz = Z(121.2), ry = -.55;
     addGeo('#d9c4a0', boxGeo(.06, 2.05, .78, hx + Math.sin(ry) * .39, 1.02, hz + Math.cos(ry) * .39, ry + Math.PI / 2));
@@ -709,7 +721,7 @@ export function buildLuckyShell(api) {
 
   // ---- 天花板設備：金色洞洞吊燈、黑色軌道燈、吊扇、LED 燈管、外露白色管線、監視器 ----
   const deco = new Map(); const dg = (k, g) => { if (!deco.has(k)) deco.set(k, []); deco.get(k).push(g); };
-  const pend = [[216, 170], [249.5, 170], [283, 170], [316.5, 170], [350, 170], [383.5, 170], [417, 170], [229, 228], [262.5, 228], [347, 230], [380.5, 240], [306, 268], [362, 267.5], [381, 267.5], [452, 148], [470, 165]];
+  const pend = [[307, 135], [340.33, 135], [373.67, 135], [292, 170], [316.5, 170], [350, 170], [383.5, 170], [228.3, 219.7], [294.9, 219.7], [328.3, 219.7], [361.6, 219.7], [394.9, 219.7], [306, 268], [362, 267.5], [381, 267.5], [452, 148], [470, 165]];
   for (const [px, py] of pend) { const x = X(px), z = Z(py); dg('cord', cylGeo(.006, .006, .52, x, WH - .26, z, 4)); dg('gold', cylGeo(.13, .13, .32, x, WH - .68, z, 16)); dg('glow', cylGeo(.1, .1, .02, x, WH - .845, z, 12)); }
   for (const [x1p, x2p, py] of [[200, 430, 128], [210, 400, 202], [24, 110, 271], [118, 165, 282], [430, 485, 270]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('tube', boxGeo(x2 - x1, .04, .06, (x1 + x2) / 2, WH - .03, z)); }
   for (const [x1p, x2p, py] of [[290, 322, 255], [420, 482, 205]]) { const x1 = X(x1p), x2 = X(x2p), z = Z(py); dg('black', boxGeo(x2 - x1, .04, .05, (x1 + x2) / 2, WH - .03, z));
