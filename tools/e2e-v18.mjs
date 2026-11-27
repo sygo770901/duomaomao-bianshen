@@ -49,8 +49,8 @@ const info = await A.evaluate(() => {
     statue: near('luckyCatStatue', 346, 280),
     island: near('kitchenIsland', 371.5, 267.5),
     cat: near('officeCat', 292, 198),
-    windowDesk: near('longDesk', 340.33, 135),
-    upperDesk: near('longDesk', 316.5, 163.7),
+    windowDeskGone: !P.slice(L, L + N).some(p => p[0] === 'longDesk' && Math.abs((p[2]/0.066+209) - 122) < 6 && (p[1]/0.066+250) > 280 && (p[1]/0.066+250) < 410),
+    upperDesk: near('longDesk', 316.5, 135.0),
     aisleMesh: near('gridPanel', 350.4, 187),
     lowerDesk: near('longDesk', 328.3, 226.0),
     pendant: count('goldPendant') >= 4,
@@ -87,8 +87,8 @@ ok('窗邊不再是獨立房間', !roomMap.north, JSON.stringify(roomMap.north))
 ok('陽台東側半高牆會擋人', await blocked(X(487), Z(270)));
 ok('陽台內可走', await freeAt(X(470), Z(262)));
 
-ok('靠窗有辦公桌椅', info.near.windowDesk);
-ok('北側內桌列仍在', info.near.upperDesk);
+ok('窗邊沒有辦公桌椅', info.near.windowDeskGone);
+ok('北側內桌列已北移到原窗邊位置', info.near.upperDesk);
 ok('兩排之間有白色鐵網', info.near.aisleMesh);
 ok('南側桌列已連成一排', info.near.lowerDesk);
 ok('新白牆會擋人', await blocked(X(240), Z(140)));
@@ -98,8 +98,8 @@ ok('白牆以南大廳可繞行', await freeAt(X(269), Z(248)));
 ok('舊白牆位置已可通過', await freeAt(X(269), Z(180)));
 ok('舊牆切開的南側桌列缺口可過', await freeAt(X(262), Z(220)));
 ok('窗邊與草皮牆之間走道可過', await freeAt(X(420), Z(150)) && await freeAt(X(420), Z(170)) && await freeAt(X(420), Z(135)));
-ok('儲藏室北牆真門可進出', await freeAt(X(427), Z(241)));
-ok('儲藏室北牆舊門洞已封', await blocked(X(440), Z(241)));
+ok('儲藏室西牆真門可進出', await freeAt(X(421), Z(252.4)));
+ok('儲藏室北牆已全封', await blocked(X(427), Z(241)) && await blocked(X(440), Z(241)));
 
 ok('原 L 形玻璃南側走道可過', await freeAt(X(334), Z(248)));
 ok('會客室門口可過', await freeAt(X(266.1), Z(286.6)));

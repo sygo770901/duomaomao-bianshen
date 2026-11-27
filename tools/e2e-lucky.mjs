@@ -60,7 +60,7 @@ const freeAt = (x, z) => A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z)
 const spawnFree = []; for (const [x, z] of [...M.hiders, ...M.seekers, M.lobbyAt]) spawnFree.push(await freeAt(x, z));
 ok('出生點／大廳位置都不卡在家具或牆裡', spawnFree.every(Boolean), JSON.stringify(spawnFree));
 const K = .066, X = px => (px - 250) * K, Z = py => (py - 209) * K;
-const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [427, 241], 設備: [460, 252.5], 草皮辦公區: [434, 130] };
+const doors = { 入口: [305, 297], 老闆: [184, 180], 弧形: [124.9, 198.8], 小辦公室: [119, 220], 會議室: [113, 250], 備品: [190, 265], 生日: [266.1, 286.6], 儲藏: [421, 252.4], 設備: [460, 252.5], 草皮辦公區: [434, 130] };
 const doorFree = {}; for (const [k, [px, py]] of Object.entries(doors)) doorFree[k] = await freeAt(X(px), Z(py));
 ok('每個門口都能通過', Object.values(doorFree).every(Boolean), JSON.stringify(doorFree));
 const wallBlock = await A.evaluate(([x, z]) => { const q = __ph.collideAt(x, z); return Math.hypot(q[0] - x, q[1] - z) > .05; }, [X(211), Z(275)]);

@@ -2,11 +2,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LocalPeer } from './localnet.js?v=23';
-import * as OFFICE from './office.js?v=23';
-import * as LUCKY from './lucky.js?v=23';
-import { buildCompound, refineWithHeightfield } from './compound.js?v=23';
-import { createDiceTable } from './dice3d.js?v=23';
+import { LocalPeer } from './localnet.js?v=24';
+import * as OFFICE from './office.js?v=24';
+import * as LUCKY from './lucky.js?v=24';
+import { buildCompound, refineWithHeightfield } from './compound.js?v=24';
+import { createDiceTable } from './dice3d.js?v=24';
 
 // ---------- 設定 ----------
 const Q = new URLSearchParams(location.search);
