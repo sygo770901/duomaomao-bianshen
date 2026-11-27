@@ -649,12 +649,6 @@ for (let n = 0; n < 6; n++) {
   const lastAim = await clearAim(H2, h2);
   if (!lastAim) break;
   await aimFrom([lastAim.x, lastAim.z], [lastAim.tx, lastAim.tz]);
-  const see = await seeker.evaluate((id) => {
-    const sp = __ph.screenOf('player', id);
-    const u = sp && __ph.pickAt(sp.x, sp.y);
-    return !!(sp && sp.onScreen && u && u.kind === 'player' && u.id === id);
-  }, h2);
-  if (!see) continue;
   await fireAt('player', h2);
   const ended = await waitFor(A, () => __ph.state?.phase === 'end', null, 2200).then(() => true, () => false);
   if (ended) break;
